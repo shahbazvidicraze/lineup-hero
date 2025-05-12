@@ -19,16 +19,16 @@ class TeamController extends Controller
         // Get teams belonging to the currently authenticated user (coach/manager)
         $user = $request->user(); // Gets user via the 'auth:api_user' middleware
         $teams = $user->teams()
-            ->with('organization') // Eager load organization if needed
-            ->when($request->has('season'), function ($query) use ($request) {
-                return $query->where('season', $request->input('season'));
-            })
-            ->when($request->has('year'), function ($query) use ($request) {
-                return $query->where('year', $request->input('year'));
-            })
-            ->orderBy('year', 'desc')
-            ->orderBy('season', 'asc') // Adjust ordering as needed
-            ->get();
+                      ->with('organization') // Eager load organization if needed
+                      ->when($request->has('season'), function ($query) use ($request) {
+                          return $query->where('season', $request->input('season'));
+                      })
+                      ->when($request->has('year'), function ($query) use ($request) {
+                          return $query->where('year', $request->input('year'));
+                      })
+                      ->orderBy('year', 'desc')
+                      ->orderBy('season', 'asc') // Adjust ordering as needed
+                      ->get();
         if($teams->count() > 0){
             return response()->json($teams);
         }else{
@@ -71,16 +71,16 @@ class TeamController extends Controller
 
     public function show(Request $request, Team $team)
     {
-        // Authorization check (ensure user owns the team)
-        if ($request->user()->id !== $team->user_id) {
-            return response()->json(['error' => 'Forbidden'], 403);
-        }
+         // Authorization check (ensure user owns the team)
+         if ($request->user()->id !== $team->user_id) {
+             return response()->json(['error' => 'Forbidden'], 403);
+         }
 
         // Eager load players. The 'stats' accessor handles calculation.
         $team->load(['organization', 'games', 'players' => function ($query) {
             $query->select(['id', 'team_id', 'first_name', 'last_name', 'jersey_number', 'email', 'phone']) // Select specific columns
-            ->orderBy('last_name')
-                ->orderBy('first_name');
+                  ->orderBy('last_name')
+                  ->orderBy('first_name');
         }]);
 
         // When $team is converted to JSON, the 'stats' accessor on each player model
@@ -96,17 +96,17 @@ class TeamController extends Controller
     {
         // Authorization check (user owns team OR is admin, etc.)
         if ($request->user()->id !== $team->user_id) {
-            if (!$request->user('api_admin')) { // Example admin check
-                return response()->json(['error' => 'Forbidden'], 403);
-            }
+             if (!$request->user('api_admin')) { // Example admin check
+                 return response()->json(['error' => 'Forbidden'], 403);
+             }
         }
 
         // Retrieve players
         $players = $team->players()
-            ->select(['id', 'team_id', 'first_name', 'last_name', 'jersey_number', 'email', 'phone'])
-            ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->get();
+                        ->select(['id', 'team_id', 'first_name', 'last_name', 'jersey_number', 'email', 'phone'])
+                        ->orderBy('last_name')
+                        ->orderBy('first_name')
+                        ->get();
 
         // When $players collection is converted to JSON, the 'stats' accessor
         // on each player model will be automatically called.
@@ -124,19 +124,19 @@ class TeamController extends Controller
 
         if (!$user || $user->id !== $team->user_id) {
             // Check if an admin is trying to access (optional, depending on requirements)
-            $admin = $request->user('api_admin'); // Check admin guard
-            if (!$admin) { // If not the owner and not an admin
-                return response()->json(['error' => 'Forbidden: You cannot access this team\'s players.'], 403);
-            }
-            // If admin access is allowed, proceed without the user ownership check
+             $admin = $request->user('api_admin'); // Check admin guard
+             if (!$admin) { // If not the owner and not an admin
+                 return response()->json(['error' => 'Forbidden: You cannot access this team\'s players.'], 403);
+             }
+             // If admin access is allowed, proceed without the user ownership check
         }
 
 
         // Retrieve players for the team
         $playersQuery = $team->players()
-            ->select(['id', 'team_id', 'first_name', 'last_name', 'jersey_number', 'email', 'phone', 'created_at']) // Select desired fields
-            ->orderBy('last_name') // Example sorting
-            ->orderBy('first_name');
+                        ->select(['id', 'team_id', 'first_name', 'last_name', 'jersey_number', 'email', 'phone', 'created_at']) // Select desired fields
+                        ->orderBy('last_name') // Example sorting
+                        ->orderBy('first_name');
 
         // Optionally add pagination if teams can have many players
         // $players = $playersQuery->paginate($request->input('per_page', 50));
@@ -161,9 +161,9 @@ class TeamController extends Controller
     public function show_old(Request $request, Team $team) // Use route model binding
     {
         // Basic authorization: Ensure the user owns the team
-        if ($request->user()->id !== $team->user_id) {
-            return response()->json(['error' => 'Forbidden'], 403);
-        }
+         if ($request->user()->id !== $team->user_id) {
+             return response()->json(['error' => 'Forbidden'], 403);
+         }
 
         // Eager load players and games for the detail view
         $team->load(['players', 'games', 'organization']);

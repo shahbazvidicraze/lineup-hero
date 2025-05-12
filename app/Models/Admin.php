@@ -11,7 +11,7 @@ class Admin extends Authenticatable implements JWTSubject // Implement JWTSubjec
 {
     use HasFactory, Notifiable;
 
-    protected $fillable = ['name', 'email', 'password'];
+    protected $fillable = ['name', 'email', 'password', 'role_id'];
     protected $hidden = ['password', 'remember_token'];
 
     protected function casts(): array {
