@@ -42,6 +42,7 @@ class PlayerController extends Controller
                     return $query; // This makes it unique across all players
                 }),
             ],
+            'phone' => 'nullable|string',
             // If adding preferences during creation (optional):
             // 'preferred_position_ids' => 'nullable|array',
             // 'preferred_position_ids.*' => 'exists:positions,id',
@@ -72,10 +73,10 @@ class PlayerController extends Controller
         // Or if an Admin should access this via a different route/check
         $user = $request->user();
         if (!$user || !$player->team || $user->id !== $player->team->user_id) {
-             // Add Admin check here if admins should also use this route
-             if (!$request->user('api_admin')) {
-                 return response()->json(['error' => 'Forbidden: You cannot access this player.'], 403);
-             }
+            // Add Admin check here if admins should also use this route
+            if (!$request->user('api_admin')) {
+                return response()->json(['error' => 'Forbidden: You cannot access this player.'], 403);
+            }
         }
 
         // Load relationships that might be useful
@@ -94,22 +95,23 @@ class PlayerController extends Controller
      */
     public function update(Request $request, Player $player)
     {
-         // Authorization: Ensure the user owns the team the player belongs to
+        // Authorization: Ensure the user owns the team the player belongs to
         if ($request->user()->id !== $player->team->user_id) {
             return response()->json(['error' => 'Forbidden: You do not manage this player'], 403);
         }
 
         $validator = Validator::make($request->all(), [
-             'first_name' => 'sometimes|required|string|max:100',
-             'last_name' => 'sometimes|required|string|max:100',
-             'jersey_number' => 'nullable|string|max:10',
-             'email' => [
+            'first_name' => 'sometimes|required|string|max:100',
+            'last_name' => 'sometimes|required|string|max:100',
+            'jersey_number' => 'nullable|string|max:10',
+            'email' => [
                 'nullable',
                 'email',
                 'max:255',
                 // Ensure email is unique, ignoring the current player's record
                 Rule::unique('players', 'email')->ignore($player->id),
             ],
+            'phone' => 'nullable|string',
             // Allow changing teams? Probably not here. Team changes are complex.
         ]);
 
