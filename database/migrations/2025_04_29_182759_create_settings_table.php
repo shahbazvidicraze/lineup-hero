@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('settings', function (Blueprint $table) {
             $table->id();
-            $table->text('optimizer_service_url')->default('https://lineup-optimizer-api.vercel.app/optimize');
+            $table->text('optimizer_service_url')->default('https://lineup-hero-optimizer.vercel.app/optimize');
             $table->integer('optimizer_timeout')->default(60);
             $table->integer('unlock_price_amount')->default(2);
             $table->string('unlock_currency')->default('usd');
