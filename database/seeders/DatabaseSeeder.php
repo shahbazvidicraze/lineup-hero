@@ -21,8 +21,8 @@ class DatabaseSeeder extends Seeder
             // Add other seeders here if needed
         ]);
 
-        // $this->call([
-        //     OrganizationTeamPlayerSeeder::class,
-        // ]);
+         $this->call([
+             OrganizationTeamPlayerSeeder::class,
+         ]);
     }
 }

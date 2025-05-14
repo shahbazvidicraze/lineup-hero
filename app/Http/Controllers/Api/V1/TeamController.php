@@ -26,8 +26,9 @@ class TeamController extends Controller
                       ->when($request->has('year'), function ($query) use ($request) {
                           return $query->where('year', $request->input('year'));
                       })
-                      ->orderBy('year', 'desc')
-                      ->orderBy('season', 'asc') // Adjust ordering as needed
+                      ->orderBy('created_at', 'desc')
+//                      ->orderBy('year', 'desc')
+//                      ->orderBy('season', 'asc') // Adjust ordering as needed
                       ->get();
         if($teams->count() > 0){
             return response()->json($teams);

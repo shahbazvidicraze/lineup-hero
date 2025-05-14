@@ -32,9 +32,14 @@ Route::prefix('v1')->group(function () {
     Route::prefix('user/auth')->controller(UserAuthController::class)->group(function () {
         Route::post('register', 'register');
         Route::post('login', 'login');
+        // Forgot/Reset Password (Public)
+        Route::post('forgot-password', 'forgotPassword');
+        Route::post('reset-password', 'resetPassword');
         Route::post('logout', 'logout')->middleware('auth:api_user');
         Route::post('refresh', 'refresh')->middleware('auth:api_user');
         Route::get('profile', 'profile')->middleware('auth:api_user');
+        Route::put('profile', 'updateProfile')->middleware('auth:api_user');
+        Route::post('change-password', 'changePassword')->middleware('auth:api_user');
     });
 
     Route::prefix('admin/auth')->controller(AdminAuthController::class)->group(function () {
@@ -42,6 +47,8 @@ Route::prefix('v1')->group(function () {
         Route::post('logout', 'logout')->middleware('auth:api_admin');
         Route::post('refresh', 'refresh')->middleware('auth:api_admin');
         Route::get('profile', 'profile')->middleware('auth:api_admin');
+        Route::put('profile', 'updateProfile')->middleware('auth:api_admin');
+        Route::post('change-password', 'changePassword')->middleware('auth:api_admin');
     });
 
     // --- Protected User Routes ---

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 class Position extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'category', 'is_editable'];
+    protected $fillable = ['name', 'display_name', 'category', 'is_editable'];
 
     public function playerPreferences()
     {

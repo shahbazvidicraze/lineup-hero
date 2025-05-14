@@ -8,7 +8,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use App\Models\Admin; // Use Admin model
+use Illuminate\Validation\Rule;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\Rules;
+use Illuminate\Support\Facades\Log;
 
 class AdminAuthController extends Controller
 {
@@ -94,5 +98,87 @@ class AdminAuthController extends Controller
             'expires_in' => auth($this->guard)->factory()->getTTL() * 60,
             'user' => $admin // Or use 'admin' key if preferred
         ]);
+    }
+
+    public function changePassword(Request $request)
+    {
+        /** @var \App\Models\Admin $admin */
+        $admin = $request->user(); // Get authenticated admin from the 'api_admin' guard
+
+        if (!$admin) {
+            // This should theoretically not happen if middleware is applied correctly
+            return response()->json(['error' => 'Admin not authenticated.'], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'current_password' => ['required', 'string', function ($attribute, $value, $fail) use ($admin) {
+                if (!Hash::check($value, $admin->password)) {
+                    $fail('The current password does not match our records.');
+                }
+            }],
+            'password' => [
+                'required',
+                'confirmed',
+                Password::defaults(), // Use Laravel's default password strength rules
+                'different:current_password' // New password must be different
+            ],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        // Update password
+        $admin->password = Hash::make($request->password);
+        $admin->save();
+
+        // Optional: Invalidate current token to force re-login for enhanced security.
+        // This depends on your desired UX. If you do this, the client will get a 200 OK
+        // but their current token will no longer work for subsequent requests.
+        // try {
+        //    auth($this->guard)->logout(); // Logs out current admin session
+        //    Log::info("Admin ID {$admin->id} changed password and was logged out.");
+        // } catch (\Exception $e) {
+        //    Log::error("Error logging out admin after password change: " . $e->getMessage());
+        // }
+
+        return response()->json(['message' => 'Password changed successfully.']);
+    }
+
+    /**
+     * Update the authenticated Admin's profile.
+     * Route: PUT /admin/auth/profile (Requires Admin auth)
+     */
+    public function updateProfile(Request $request)
+    {
+        /** @var \App\Models\Admin $admin */
+        $admin = $request->user(); // Get authenticated admin
+
+        if (!$admin) {
+            return response()->json(['error' => 'Admin not authenticated.'], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'name' => 'sometimes|required|string|max:255',
+            'email' => [
+                'sometimes',
+                'required',
+                'string',
+                'email',
+                'max:255',
+                Rule::unique('admins', 'email')->ignore($admin->id), // Email must be unique, ignoring self
+            ],
+            // Add other fields if Admins have more updatable profile attributes
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        // Update only the validated fields that are present in the request
+        $admin->fill($validator->validated());
+        $admin->save();
+
+        return response()->json($admin);
     }
 }

@@ -16,31 +16,26 @@ class PositionSeeder extends Seeder
         // Using updateOrCreate to find by name and update/create attributes.
         // This makes the seeder safe to re-run.
         $positions = [
-            // Core Positions with Specific Categories
-            ['name' => 'P',     'category' => 'PITCHER', 'is_editable' => false],
-            ['name' => 'C',     'category' => 'CATCHER', 'is_editable' => false],
+            // Core Positions
+            ['name' => 'P',  'display_name' => 'Pitcher',        'category' => 'PITCHER', 'is_editable' => false],
+            ['name' => 'C',  'display_name' => 'Catcher',        'category' => 'CATCHER', 'is_editable' => false],
+            ['name' => '1B', 'display_name' => 'First Base',     'category' => 'INF',     'is_editable' => false],
+            ['name' => '2B', 'display_name' => 'Second Base',    'category' => 'INF',     'is_editable' => false],
+            ['name' => '3B', 'display_name' => 'Third Base',     'category' => 'INF',     'is_editable' => false],
+            ['name' => 'SS', 'display_name' => 'Shortstop',      'category' => 'INF',     'is_editable' => false],
+            ['name' => 'LF', 'display_name' => 'Left Field',     'category' => 'OF',      'is_editable' => false],
+            ['name' => 'CF', 'display_name' => 'Center Field',   'category' => 'OF',      'is_editable' => false],
+            ['name' => 'RF', 'display_name' => 'Right Field',    'category' => 'OF',      'is_editable' => false],
 
-            // Infield Positions (Category: INF)
-            ['name' => '1B',    'category' => 'INF',     'is_editable' => false],
-            ['name' => '2B',    'category' => 'INF',     'is_editable' => false],
-            ['name' => '3B',    'category' => 'INF',     'is_editable' => false],
-            ['name' => 'SS',    'category' => 'INF',     'is_editable' => false],
+            // Softball/Custom Positions
+            ['name' => 'BF', 'display_name' => 'Buck Short',     'category' => 'OF',      'is_editable' => true],
+            ['name' => 'SF', 'display_name' => 'Short Fielder',  'category' => 'OF',      'is_editable' => true],
 
-            // Outfield Positions (Category: OF)
-            ['name' => 'LF',    'category' => 'OF',      'is_editable' => false],
-            ['name' => 'CF',    'category' => 'OF',      'is_editable' => false],
-            ['name' => 'RF',    'category' => 'OF',      'is_editable' => false],
-
-            // Potential Softball/Custom Positions (Assign INF or OF as appropriate)
-            // Assigning BF & SF to OF as per common softball usage, but admin can change later if needed
-            ['name' => 'BF',    'category' => 'OF',      'is_editable' => true], // Buck Short / Rover often plays shallow OF
-            ['name' => 'SF',    'category' => 'OF',      'is_editable' => true], // Short Fielder plays shallow OF
-
-            // Special / Non-Playing Designations
-            ['name' => 'OUT',   'category' => 'SPECIAL', 'is_editable' => false], // Cannot be edited/deleted
-            ['name' => 'BENCH', 'category' => 'SPECIAL', 'is_editable' => true],  // If needed for explicit bench assignment
-            ['name' => 'DH',    'category' => 'SPECIAL', 'is_editable' => true],  // Designated Hitter
-            ['name' => 'EH',    'category' => 'SPECIAL', 'is_editable' => true],  // Extra Hitter
+            // Special Designations
+            ['name' => 'OUT',   'display_name' => 'Out',            'category' => 'SPECIAL', 'is_editable' => false],
+            ['name' => 'BENCH', 'display_name' => 'Bench',          'category' => 'SPECIAL', 'is_editable' => true],
+            ['name' => 'DH',    'display_name' => 'Des. Hitter',    'category' => 'SPECIAL', 'is_editable' => true],
+            ['name' => 'EH',    'display_name' => 'Extra Hitter',   'category' => 'SPECIAL', 'is_editable' => true],
         ];
 
         $this->command->info('Seeding/Updating Positions...');
