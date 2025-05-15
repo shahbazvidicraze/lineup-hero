@@ -24,6 +24,7 @@ class User extends Authenticatable implements JWTSubject // <-- Implement JWTSub
         'password',
         'phone',      // Added
         'role_id',
+        'receive_payment_notifications',
     ];
 
     /**
@@ -46,6 +47,7 @@ class User extends Authenticatable implements JWTSubject // <-- Implement JWTSub
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'receive_payment_notifications' => 'boolean',
         ];
     }
 

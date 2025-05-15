@@ -148,6 +148,7 @@ class UserAuthController extends Controller
             'first_name' => 'sometimes|required|string|max:100', 'last_name' => 'sometimes|required|string|max:100',
             'email' => ['sometimes','required','string','email','max:100', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['nullable','string','max:20', Rule::unique('users', 'phone')->ignore($user->id)],
+            'receive_payment_notifications' => 'sometimes|boolean',
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
 

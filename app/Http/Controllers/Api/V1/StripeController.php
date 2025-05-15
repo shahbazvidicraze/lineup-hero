@@ -160,14 +160,16 @@ class StripeController extends Controller
         $team->grantPaidAccess(null); // Grant access (decide expiry based on business logic)
         Log::info("Access granted for Team ID {$teamId} via PaymentIntent {$paymentIntent->id}");
 
-        // --- Send User Payment Success Notification ---
-        if ($user->email) { // Check if user has an email
+        // --- Send User Payment Success Notification (Check Preference) ---
+        if ($user->email && $user->receive_payment_notifications) { // <-- CHECK PREFERENCE
             try {
                 Mail::to($user->email)->send(new UserPaymentSuccessMail($payment));
                 Log::info("User payment success notification sent to {$user->email} for PI {$paymentIntent->id}");
             } catch (\Exception $e) {
-                Log::error("Failed to send user payment success notification for PI {$paymentIntent->id}: " . $e->getMessage(), ['exception' => $e]);
+                Log::error("Failed to send user payment success notification for PI {$paymentIntent->id}: " . $e->getMessage());
             }
+        } elseif ($user->email && !$user->receive_payment_notifications) {
+            Log::info("User {$user->email} has opted out of payment success notifications for PI {$paymentIntent->id}.");
         }
         // --- End Send User Notification ---
 
@@ -200,16 +202,20 @@ class StripeController extends Controller
             $team = Team::find($teamId);
             $user = User::find($userId);
 
-            if ($user && $team && $user->email) { // Check if user and team exist and user has email
+            // --- Send User Payment Failed Notification (Check Preference) ---
+            if ($user && $team && $user->email && $user->receive_payment_notifications) { // <-- CHECK PREFERENCE
                 try {
                     Mail::to($user->email)->send(new UserPaymentFailedMail($user, $team, $paymentIntent));
                     Log::info("User payment failed notification sent to {$user->email} for PI {$paymentIntent->id}");
                 } catch (\Exception $e) {
-                    Log::error("Failed to send user payment failed notification for PI {$paymentIntent->id}: " . $e->getMessage(), ['exception' => $e]);
+                    Log::error("Failed to send user payment failed notification for PI {$paymentIntent->id}: " . $e->getMessage());
                 }
-            } else {
-                Log::warning("Could not send payment failed notification: User, Team, or User email missing for PI {$paymentIntent->id}");
+            } elseif ($user && $user->email && !$user->receive_payment_notifications) {
+                Log::info("User {$user->email} has opted out of payment failed notifications for PI {$paymentIntent->id}.");
+            } elseif (!$user || !$user->email) {
+                Log::warning("Could not send payment failed notification: User or User email missing for PI {$paymentIntent->id}");
             }
+            // --- End Send User Notification ---
         } else {
             Log::warning("Could not send payment failed notification: TeamID or UserID missing in metadata for PI {$paymentIntent->id}");
         }
