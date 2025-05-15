@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait; // <-- USE TRAIT
 use App\Mail\AdminPaymentReceivedMail;
+use App\Mail\UserPaymentFailedMail;
+use App\Mail\UserPaymentSuccessMail;
 use App\Models\Payment;
 use App\Models\Team;
 use App\Models\Settings; // Import Settings
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -139,6 +142,8 @@ class StripeController extends Controller
             return;
         }
         $team = Team::find($teamId);
+        $user = User::find($userId);
+
         if (!$team) {
             Log::error("Webhook Succeeded Error: Team not found for team_id {$teamId} from PI {$paymentIntent->id}");
             return;
@@ -154,6 +159,17 @@ class StripeController extends Controller
         ]);
         $team->grantPaidAccess(null); // Grant access (decide expiry based on business logic)
         Log::info("Access granted for Team ID {$teamId} via PaymentIntent {$paymentIntent->id}");
+
+        // --- Send User Payment Success Notification ---
+        if ($user->email) { // Check if user has an email
+            try {
+                Mail::to($user->email)->send(new UserPaymentSuccessMail($payment));
+                Log::info("User payment success notification sent to {$user->email} for PI {$paymentIntent->id}");
+            } catch (\Exception $e) {
+                Log::error("Failed to send user payment success notification for PI {$paymentIntent->id}: " . $e->getMessage(), ['exception' => $e]);
+            }
+        }
+        // --- End Send User Notification ---
 
         // --- Send Admin Notification Email ---
         $settings = Settings::instance();
@@ -176,6 +192,40 @@ class StripeController extends Controller
     protected function handlePaymentIntentFailed(PaymentIntent $paymentIntent): void
     {
         Log::warning("Handling payment_intent.payment_failed: {$paymentIntent->id}", ['metadata' => $paymentIntent->metadata]);
-        // TODO: Notify user or admin if needed
+
+        $teamId = $paymentIntent->metadata->team_id ?? null;
+        $userId = $paymentIntent->metadata->user_id ?? null;
+
+        if ($teamId && $userId) {
+            $team = Team::find($teamId);
+            $user = User::find($userId);
+
+            if ($user && $team && $user->email) { // Check if user and team exist and user has email
+                try {
+                    Mail::to($user->email)->send(new UserPaymentFailedMail($user, $team, $paymentIntent));
+                    Log::info("User payment failed notification sent to {$user->email} for PI {$paymentIntent->id}");
+                } catch (\Exception $e) {
+                    Log::error("Failed to send user payment failed notification for PI {$paymentIntent->id}: " . $e->getMessage(), ['exception' => $e]);
+                }
+            } else {
+                Log::warning("Could not send payment failed notification: User, Team, or User email missing for PI {$paymentIntent->id}");
+            }
+        } else {
+            Log::warning("Could not send payment failed notification: TeamID or UserID missing in metadata for PI {$paymentIntent->id}");
+        }
+
+        // Optionally: Record failed payment attempt in 'payments' table with 'failed' status
+        if ($userId && $teamId && !Payment::where('stripe_payment_intent_id', $paymentIntent->id)->exists()) {
+            Payment::create([
+                'user_id' => $userId,
+                'team_id' => $teamId,
+                'stripe_payment_intent_id' => $paymentIntent->id,
+                'amount' => $paymentIntent->amount, // Amount attempted
+                'currency' => $paymentIntent->currency,
+                'status' => 'failed', // Mark as failed
+                'paid_at' => null, // Not paid
+            ]);
+            Log::info("Recorded failed payment attempt for PI {$paymentIntent->id}");
+        }
     }
 }
