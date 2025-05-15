@@ -43,16 +43,23 @@ class TeamController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255', 'sport_type' => ['required', Rule::in(['baseball', 'softball'])],
+            'name' => 'required|string|max:255',
+            'sport_type' => ['required', Rule::in(['baseball', 'softball'])],
             'team_type' => ['required', Rule::in(['travel', 'recreation', 'school'])],
-            'age_group' => 'required|string|max:50', 'season' => 'nullable|string|max:50',
-            'year' => 'nullable|integer|digits:4', 'city' => 'nullable|string|max:100',
-            'state' => 'nullable|string|max:100', 'organization_id' => 'nullable|exists:organizations,id',
+            'age_group' => 'required|string|max:50',
+            'season' => 'nullable|string|max:50',
+            'year' => 'nullable|integer|digits:4',
+            'city' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'organization_id' => 'nullable|exists:organizations,id',
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
 
         $team = $request->user()->teams()->create($validator->validated());
-        if ($team->organization_id) $team->load('organization:id,name');
+        // Optionally load the organization relationship if it was set
+        if ($team->organization_id) {
+            $team->load('organization');
+        }
         return $this->successResponse($team, 'Team created successfully.', Response::HTTP_CREATED);
     }
 

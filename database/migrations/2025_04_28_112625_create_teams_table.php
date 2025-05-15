@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('organization_id')->nullable()->constrained('organizations')->nullOnDelete(); // Link to Organization
             $table->string('name');
             $table->string('season')->nullable(); // e.g., "Spring", "Summer", "Fall"
-            $table->year('year')->nullable(); // e.g., 2024
+            $table->smallInteger('year')->nullable(); // e.g., 2024
             $table->enum('sport_type', ['baseball', 'softball']);
             $table->enum('team_type', ['travel', 'recreation', 'school']);
             $table->string('age_group'); // e.g., "11u", "Varsity"

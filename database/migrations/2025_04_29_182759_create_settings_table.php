@@ -18,6 +18,8 @@ return new class extends Migration
             $table->integer('unlock_price_amount')->default(2);
             $table->string('unlock_currency')->default('usd');
             $table->string('unlock_currency_symbol')->default('$');
+            $table->boolean('notify_admin_on_payment')->default(true);
+            $table->string('admin_notification_email')->nullable();
             $table->enum('unlock_currency_symbol_position', ['before', 'after'])->default('before');
             $table->timestamps();
         });

@@ -10,73 +10,36 @@ class Settings extends Model
 {
     use HasFactory;
 
-    /**
-     * The attributes that are mass assignable.
-     * Allow mass assignment for easier updates by admins.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
         'optimizer_service_url',
-        'optimizer_timeout',
         'unlock_price_amount',
-        'unlock_currentcy', // Corrected typo from migration 'unlock_currency'
-        'unlock_currentcy_symbol', // Corrected typo from migration 'unlock_currency_symbol'
-        'unlock_currentcy_symbol_position', // Corrected typo from migration 'unlock_currency_symbol_position'
+        'unlock_currency',
+        'unlock_currency_symbol',
+        'unlock_currency_symbol_position',
+        'notify_admin_on_payment',      // <-- ADDED
+        'admin_notification_email',   // <-- ADDED
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
-        'unlock_price_amount' => 'integer', // Amount is stored in cents
+        'unlock_price_amount' => 'integer',
+        'notify_admin_on_payment' => 'boolean', // <-- ADDED
     ];
 
-    /**
-     * The table associated with the model.
-     * Explicitly defining can prevent issues if table name differs from pluralized model name.
-     *
-     * @var string
-     */
     protected $table = 'settings';
-
-
-    // --- Singleton Access ---
-
-    /**
-     * Cache key for settings.
-     * @var string
-     */
     protected const CACHE_KEY = 'app_settings';
 
-    /**
-     * Get the application settings instance.
-     * Creates default settings if none exist and caches the result.
-     *
-     * @param bool $forceRefresh Force fetching from DB instead of cache.
-     * @return self
-     */
     public static function instance(bool $forceRefresh = false): self
     {
-        $cacheKey = self::CACHE_KEY;
-
-        if ($forceRefresh) {
-            Cache::forget($cacheKey);
-        }
-
-        // Cache settings for efficiency (e.g., for 1 hour)
-        // Use Cache::rememberForever for permanent caching until manually cleared
-        return Cache::remember($cacheKey, now()->addHour(), function () {
-            // Attempt to find the first settings record, or create it with defaults
-            // Note: Defaults here should match migration defaults if possible
+        if ($forceRefresh) Cache::forget(self::CACHE_KEY);
+        return Cache::remember(self::CACHE_KEY, now()->addHour(), function () {
             return self::firstOrCreate([], [
-                'optimizer_service_url' => 'http://127.0.0.1:5000/optimize',
-                'unlock_price_amount' => 500, // Use cents (match StripeController expectation)
-                'unlock_currentcy' => 'usd',
-                'unlock_currentcy_symbol' => '$',
-                'unlock_currentcy_symbol_position' => 'before',
+                'optimizer_service_url' => "https://lineup-hero-optimizer.vercel.app/optimize",
+                'unlock_price_amount' => 500,
+                'unlock_currency' => 'usd',
+                'unlock_currency_symbol' => '$',
+                'unlock_currency_symbol_position' => 'before',
+                'notify_admin_on_payment' => true, // Default value
+                'admin_notification_email' => config('mail.from.address', 'admin@example.com'), // Default value
             ]);
         });
     }

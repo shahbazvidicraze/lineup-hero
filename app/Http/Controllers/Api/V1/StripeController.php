@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait; // <-- USE TRAIT
+use App\Mail\AdminPaymentReceivedMail;
 use App\Models\Payment;
 use App\Models\Team;
 use App\Models\Settings; // Import Settings
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\Exception\ApiErrorException; // For Stripe API errors
 use Stripe\PaymentIntent;
@@ -142,7 +144,7 @@ class StripeController extends Controller
             return;
         }
 
-        Payment::create([
+        $payment = Payment::create([
             'user_id' => $userId, 'team_id' => $teamId,
             'stripe_payment_intent_id' => $paymentIntent->id,
             'amount' => $paymentIntent->amount_received,
@@ -152,6 +154,23 @@ class StripeController extends Controller
         ]);
         $team->grantPaidAccess(null); // Grant access (decide expiry based on business logic)
         Log::info("Access granted for Team ID {$teamId} via PaymentIntent {$paymentIntent->id}");
+
+        // --- Send Admin Notification Email ---
+        $settings = Settings::instance();
+        if ($settings->notify_admin_on_payment && !empty($settings->admin_notification_email)) {
+            try {
+                // Pass the newly created Payment model instance to the mailable
+                Mail::to($settings->admin_notification_email)->send(new AdminPaymentReceivedMail($payment));
+                Log::info("Admin payment notification sent to {$settings->admin_notification_email} for PaymentIntent {$paymentIntent->id}");
+            } catch (\Exception $e) {
+                Log::error("Failed to send admin payment notification for PI {$paymentIntent->id}: " . $e->getMessage(), ['exception' => $e]);
+            }
+        } elseif (!$settings->notify_admin_on_payment) {
+            Log::info("Admin payment notification is disabled in settings for PI {$paymentIntent->id}.");
+        } elseif (empty($settings->admin_notification_email)) {
+            Log::warning("Admin payment notification enabled, but no admin_notification_email is set in settings for PI {$paymentIntent->id}.");
+        }
+        // --- End Send Admin Notification Email ---
     }
 
     protected function handlePaymentIntentFailed(PaymentIntent $paymentIntent): void
