@@ -3,100 +3,121 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\ApiResponseTrait; // <-- USE TRAIT
 use App\Models\Position;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Http\Response; // For status codes
 
 class PositionController extends Controller
 {
+    use ApiResponseTrait; // <-- INCLUDE TRAIT
+
     private $corePositions = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'OUT'];
-    private $nonEditablePositions = ['OUT']; // Define positions whose 'is_editable' flag or name cannot be changed
+    private $nonEditablePositions = ['OUT'];
+
     /**
-     * Display a listing of the resource.
-     * Used by Users (Coaches) to get available positions for preferences.
-     * Used by Admins (potentially with more detail or filtering).
+     * Display a listing of positions.
+     * Route: GET /positions (User)
+     * Route: GET /admin/positions (Admin)
      */
-    public function index()
+    public function index(Request $request)
     {
-        // Return all positions, potentially sorted
-        $positions = Position::orderBy('category')->orderBy('name')->get();
-        return response()->json($positions);
+        if ($request->user('api_admin')) { // Check if called from admin context
+            $positions = Position::orderBy('category')->orderBy('name')->paginate($request->input('per_page', 50));
+            // The successResponse trait handles paginator instances correctly
+            return $this->successResponse($positions, 'Positions retrieved successfully (Admin View).');
+        } else {
+            $positions = Position::orderBy('category')->orderBy('name')->get();
+            return $this->successResponse($positions, 'Positions retrieved successfully.');
+        }
     }
 
-    // store, show, update, destroy methods will be used by Admins
-    // We'll implement them when building Admin features, adding checks for is_editable etc.
-    public function store(Request $request) {
+    /**
+     * Store a newly created position (Admin only).
+     * Route: POST /admin/positions
+     */
+    public function store(Request $request)
+    {
+        // Authorization via 'auth:api_admin' middleware on route
+
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:10|unique:positions,name',
-            'display_name' => 'required|string|max:50', // <-- ADDED VALIDATION
+            'display_name' => 'required|string|max:50',
             'category' => 'required|string|max:50',
             'is_editable' => 'sometimes|boolean',
         ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
+        if ($validator->fails()) return $this->validationErrorResponse($validator);
 
         $validatedData = $validator->validated();
         $validatedData['is_editable'] = $validatedData['is_editable'] ?? true;
-
         $position = Position::create($validatedData);
-        return response()->json($position, 201);
+        return $this->successResponse($position, 'Position created successfully.', Response::HTTP_CREATED);
     }
-    public function show(Position $position) {
-        // Admin only logic here
-        return response()->json($position); // Or restricted view for non-admins?
+
+    /**
+     * Display the specified position (Admin only).
+     * Route: GET /admin/positions/{position}
+     */
+    public function show(Position $position)
+    {
+        // Authorization via 'auth:api_admin' middleware on route
+        return $this->successResponse($position);
     }
+
+    /**
+     * Update the specified position (Admin only).
+     * Route: PUT /admin/positions/{position}
+     */
     public function update(Request $request, Position $position)
     {
-        // Prevent critical changes to non-editable positions
+        // Authorization via 'auth:api_admin' middleware on route
+
         if (!$position->is_editable || in_array($position->name, $this->nonEditablePositions)) {
             if (($request->has('name') && $request->input('name') !== $position->name) ||
                 ($request->has('is_editable') && $request->boolean('is_editable') != $position->is_editable) ) {
-                return response()->json(['error' => "Cannot change core attributes of the non-editable position '{$position->name}'."], 403);
+                return $this->forbiddenResponse("Cannot change core attributes of non-editable position '{$position->name}'.");
             }
         }
 
         $validator = Validator::make($request->all(), [
-            'name' => [
-                'sometimes', 'required', 'string', 'max:10',
-                Rule::unique('positions', 'name')->ignore($position->id),
-            ],
-            'display_name' => 'sometimes|required|string|max:50', // <-- ADDED VALIDATION
+            'name' => ['sometimes','required','string','max:10', Rule::unique('positions', 'name')->ignore($position->id)],
+            'display_name' => 'sometimes|required|string|max:50',
             'category' => 'sometimes|required|string|max:50',
             'is_editable' => 'sometimes|required|boolean',
         ]);
+        if ($validator->fails()) return $this->validationErrorResponse($validator);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
         $validatedData = $validator->validated();
-
-        // Prevent making essential non-editable positions editable
         if (in_array($position->name, $this->nonEditablePositions) && isset($validatedData['is_editable']) && $validatedData['is_editable']) {
-            return response()->json(['error' => "Position '{$position->name}' cannot be made editable."], 403);
+            return $this->forbiddenResponse("Position '{$position->name}' cannot be made editable.");
         }
 
-        $position->update($validator->validated());
-        return response()->json($position);
+        $position->update($validatedData);
+        return $this->successResponse($position, 'Position updated successfully.');
     }
 
+    /**
+     * Remove the specified position (Admin only).
+     * Route: DELETE /admin/positions/{position}
+     */
     public function destroy(Position $position)
     {
-        // ... (destroy logic remains the same) ...
+        // Authorization via 'auth:api_admin' middleware on route
+
         if (!$position->is_editable || in_array($position->name, $this->corePositions)) {
-            return response()->json(['error' => "Cannot delete the core/non-editable position '{$position->name}'."], 403);
+            return $this->forbiddenResponse("Cannot delete core/non-editable position '{$position->name}'.");
         }
         if ($position->playerPreferences()->exists()) {
-            return response()->json(['error' => "Cannot delete position '{$position->name}' as it is used in preferences."], 409);
+            return $this->errorResponse("Cannot delete position '{$position->name}' as it is used in preferences.", Response::HTTP_CONFLICT);
         }
         try {
             $position->delete();
-            return response()->json(null, 204);
+            return $this->successResponse(null, 'Position deleted successfully.', Response::HTTP_OK, false);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to delete position.'], 500);
+            // Log::error(...)
+            return $this->errorResponse('Failed to delete position.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-
 }

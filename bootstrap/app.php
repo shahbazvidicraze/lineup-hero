@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -23,13 +25,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // --- Authentication Exception Handling for API ---
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('api/*') || $request->wantsJson()) {
-                return response()->json(['message' => 'Unauthenticated.'], 401);
+                return response()->json(['success'=>false, 'message' => 'You are unauthenticated.'], 401);
             }
         });
 
         $exceptions->render(function (ModelNotFoundException $e, Request $request) {
             if ($request->is('api/*') || $request->wantsJson()) {
-                 return response()->json(['message' => 'Resource not found.'], 404);
+                 return response()->json(['success'=> false,'message' => 'Resource not found.'], 404);
             }
         });
 
@@ -37,7 +39,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (NotFoundHttpException $e, Request $request) { // <-- Handler for NotFoundHttpException
             if ($request->is('api/*') || $request->wantsJson()) {
 
-                return response()->json(['message' => 'Resource not found.'], 404); // Return JSON 404
+                return response()->json(['success'=>false,'message' => 'Resource not found.'], 404); // Return JSON 404
             }
              // Let default handler manage non-API 404s (shows HTML 404 page)
         });

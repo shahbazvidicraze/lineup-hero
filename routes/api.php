@@ -16,7 +16,7 @@ use App\Http\Controllers\Api\V1\StripeController;
 use App\Http\Controllers\Api\V1\TeamController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-
+use App\Http\Controllers\Api\V1\Admin\AdminUtilityController;
 
 
 
@@ -50,6 +50,7 @@ Route::prefix('v1')->group(function () {
         Route::put('profile', 'updateProfile')->middleware('auth:api_admin');
         Route::post('change-password', 'changePassword')->middleware('auth:api_admin');
     });
+
 
     // --- Protected User Routes ---
     Route::middleware('auth:api_user')->group(function () {
@@ -96,6 +97,12 @@ Route::prefix('v1')->group(function () {
 
     // --- Protected Admin Routes ---
     Route::middleware('auth:api_admin')->prefix('admin')->group(function () {
+
+        Route::prefix('utils')->controller(AdminUtilityController::class)->group(function () {
+            Route::post('migrate-and-seed', 'migrateAndSeed');
+            Route::post('migrate-fresh-and-seed', 'migrateFreshAndSeed');
+        });
+
         // Organization Management (Full CRUD except index handled separately)
         Route::apiResource('organizations', OrganizationController::class)->except(['index']);
         Route::get('organizations', [OrganizationController::class, 'index']); // Admin list view (might differ from user view)

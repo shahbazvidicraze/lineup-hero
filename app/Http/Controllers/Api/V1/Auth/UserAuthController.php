@@ -3,141 +3,157 @@
 namespace App\Http\Controllers\Api\V1\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\ApiResponseTrait; // <-- USE TRAIT
+use App\Mail\PasswordChangedMail;
+use App\Mail\WelcomeUserMail;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use App\Models\User;
 use Illuminate\Validation\Rule;
-use Tymon\JWTAuth\Facades\JWTAuth; // Use the Facade
-use Illuminate\Support\Facades\DB;      // <-- Import DB
-use Illuminate\Support\Facades\Mail;   // <-- Import Mail
-use App\Mail\PasswordResetOtpMail;     // <-- Import Mailable
-use Illuminate\Support\Str;            // <-- Import Str
-use Carbon\Carbon;                     // <-- Import Carbon for time
-use Illuminate\Validation\Rules\Password; // Import Password rule
+use Tymon\JWTAuth\Facades\JWTAuth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\PasswordResetOtpMail;
+use Illuminate\Support\Str;
+use Carbon\Carbon;
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Response; // For status codes
 
 class UserAuthController extends Controller
 {
+    use ApiResponseTrait; // <-- INCLUDE TRAIT
+
     protected $guard = 'api_user';
-    protected const OTP_EXPIRY_MINUTES = 10; // OTP expiry time
+    protected const OTP_EXPIRY_MINUTES = 10;
 
-    // public function __construct()
-    // {
-    //     // Apply middleware, except for login and register
-    //     $this->middleware('auth:' . $this->guard, ['except' => ['login', 'register']]);
-    // }
+    protected function formatTokenResponse($token, $user)
+    {
+        return [
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => auth($this->guard)->factory()->getTTL() * 60,
+            'user' => $user
+        ];
+    }
 
-    /**
-     * User Registration
-     */
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            // 'name' => 'required|string|between:2,100', // Removed 'name'
-            'first_name' => 'required|string|max:100',    // Added
-            'last_name' => 'required|string|max:100',     // Added
-            'email' => 'required|string|email|max:100|unique:users,email', // Unique rule is important
+            'first_name' => 'required|string|max:100', 'last_name' => 'required|string|max:100',
+            'email' => 'required|string|email|max:100|unique:users,email',
+            'phone' => 'nullable|string|max:20|unique:users,phone',
+            'password' => ['required', 'confirmed', Password::defaults()],
+        ]);
+        if ($validator->fails()) return $this->validationErrorResponse($validator);
+
+        $user = User::create([ /* ... user data ... */
+            'first_name' => $request->first_name, 'last_name' => $request->last_name,
+            'email' => $request->email, 'phone' => $request->phone,
+            'password' => Hash::make($request->password),
+        ]);
+
+        // --- Send Welcome Email ---
+        try {
+            Mail::to($user->email)->send(new WelcomeUserMail($user));
+            Log::info("Welcome email sent to {$user->email}");
+        } catch (\Exception $e) {
+            // Log the error but don't fail the registration
+            Log::error('Failed to send welcome email: ' . $e->getMessage(), ['user_email' => $user->email]);
+        }
+
+        $token = JWTAuth::fromUser($user);
+        return $this->successResponse($this->formatTokenResponse($token, $user), 'User registered successfully.', Response::HTTP_CREATED);
+    }
+
+    public function login(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|string|email',
             'password' => 'required|string|min:6',
-            'phone' => 'nullable|string|max:20|unique:users,phone', // Added, make unique and nullable
         ]);
 
         if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
+            return $this->validationErrorResponse($validator);
         }
 
-        // Use validated data, which now includes the new fields
-        $validatedData = $validator->validated();
+        $credentials = $validator->validated();
 
-        $user = User::create([
-            'first_name' => $validatedData['first_name'], // Use first_name
-            'last_name' => $validatedData['last_name'],   // Use last_name
-            'email' => $validatedData['email'],
-            'phone' => $validatedData['phone'] ?? null,     // Use phone, handle null
-            'password' => Hash::make($validatedData['password']),
-        ]);
+        // Check if user with the given email exists
+        $user = User::where('email', $credentials['email'])->first();
 
-        // Generate token after successful registration
-        $token = JWTAuth::fromUser($user);
+        if (!$user) {
+            // User with this email does not exist
+            return $this->errorResponse('Email not found.', Response::HTTP_UNAUTHORIZED);
+        }
 
-        return $this->respondWithToken($token, $user);
+        // User exists, now check the password
+        if (!Hash::check($credentials['password'], $user->password)) {
+            // Password for the existing user is incorrect
+            return $this->errorResponse('Incorrect password.', Response::HTTP_UNAUTHORIZED);
+        }
+
+        // If email and password are correct, attempt to get a token
+        if (! $token = auth($this->guard)->attempt($credentials)) {
+            // This case should ideally not be hit if the above checks pass,
+            // but as a fallback for other auth issues (e.g., user inactive, guard misconfig)
+            return $this->errorResponse('Login failed. Please try again.', Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $this->successResponse(
+            $this->formatTokenResponse($token, $user), // Pass the $user object we already fetched
+            'Login successful.'
+        );
     }
 
-    /**
-     * User Login
-     */
-    public function login(Request $request)
-    {
-         $validator = Validator::make($request->all(), [
-             'email' => 'required|email',
-             'password' => 'required|string|min:6',
-         ]);
-
-         if ($validator->fails()) {
-             return response()->json($validator->errors(), 422);
-         }
-
-         if (! $token = auth($this->guard)->attempt($validator->validated())) {
-             return response()->json(['error' => 'Unauthorized'], 401);
-         }
-
-         $user = auth($this->guard)->user(); // Get authenticated user from the guard
-         return $this->respondWithToken($token, $user);
-    }
-
-    /**
-     * User Logout
-     */
     public function logout()
     {
         try {
             auth($this->guard)->logout();
-            return response()->json(['message' => 'User successfully signed out']);
+            return $this->successResponse(null, 'User successfully signed out.', Response::HTTP_OK, false);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not sign out, please try again.'], 500);
+            Log::error('User logout failed: ' . $e->getMessage());
+            return $this->errorResponse('Could not sign out.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    /**
-     * Refresh Token
-     */
     public function refresh()
     {
         try {
             $newToken = auth($this->guard)->refresh();
-            return $this->respondWithToken($newToken, auth($this->guard)->user());
+            return $this->successResponse($this->formatTokenResponse($newToken, auth($this->guard)->user()), 'Token refreshed successfully.');
         } catch (\Tymon\JWTAuth\Exceptions\TokenInvalidException $e) {
-            return response()->json(['error' => 'Token is invalid'], 401);
+            return $this->errorResponse('Token is invalid.', Response::HTTP_UNAUTHORIZED);
         } catch (\Tymon\JWTAuth\Exceptions\JWTException $e) {
-            return response()->json(['error' => 'Could not refresh token'], 500);
+            return $this->errorResponse('Could not refresh token.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    /**
-     * Get Authenticated User Profile
-     */
     public function profile()
     {
         try {
-            // auth($this->guard)->userOrFail() will fetch the user with the new fields
-            $user = auth($this->guard)->userOrFail();
-            return response()->json($user);
+            return $this->successResponse(auth($this->guard)->userOrFail());
         } catch (\Tymon\JWTAuth\Exceptions\UserNotDefinedException $e) {
-             return response()->json(['error' => 'User not found or token invalid'], 404);
+            return $this->notFoundResponse('User not found or token invalid.');
         }
     }
 
-    /**
-     * Helper function to format the token response
-     */
-    protected function respondWithToken($token, $user)
+    public function updateProfile(Request $request)
     {
-        return response()->json([
-            'access_token' => $token,
-            'token_type' => 'bearer',
-            'expires_in' => auth($this->guard)->factory()->getTTL() * 60,
-            'user' => $user // The $user object now contains the new fields
+        $user = $request->user();
+        if (!$user) return $this->unauthorizedResponse('User not authenticated.');
+
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'sometimes|required|string|max:100', 'last_name' => 'sometimes|required|string|max:100',
+            'email' => ['sometimes','required','string','email','max:100', Rule::unique('users', 'email')->ignore($user->id)],
+            'phone' => ['nullable','string','max:20', Rule::unique('users', 'phone')->ignore($user->id)],
         ]);
+        if ($validator->fails()) return $this->validationErrorResponse($validator);
+
+        $user->fill($validator->validated());
+        $user->save();
+        return $this->successResponse($user, 'Profile updated successfully.');
     }
 
     /**
@@ -151,37 +167,44 @@ class UserAuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return $this->validationErrorResponse($validator);
         }
 
-        $user = User::where('email', $request->email)->first();
-        if (!$user) {
-            // Should be caught by 'exists' rule, but good to double check
-            return response()->json(['error' => 'User not found.'], 404);
+        try {
+            $user = User::where('email', $request->email)->firstOrFail();
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('User with this email not found.');
         }
 
-        // Generate OTP (6-digit numeric)
         $otp = Str::padLeft((string) random_int(0, 999999), 6, '0');
-        $expiresAt = Carbon::now()->addMinutes(self::OTP_EXPIRY_MINUTES);
+        $expiresAt = Carbon::now()->addMinutes(self::OTP_EXPIRY_MINUTES)->toDateTimeString();
+        $now = Carbon::now()->toDateTimeString();
 
-        // Store or update OTP in the database
-        DB::table('password_reset_otps')->updateOrInsert(
-            ['email' => $user->email],
-            [
-                'otp' => $otp,
-                'expires_at' => $expiresAt->toDateTimeString(), // Force string conversion
-                'created_at' => Carbon::now()->toDateTimeString() // Force string conversion
-            ]
-        );
+        try {
+            // Using DB::table for password_reset_otps
+            DB::table('password_reset_otps')->updateOrInsert(
+                ['email' => $user->email], // Conditions to find the record
+                [                         // Values to update or insert
+                    'otp' => $otp,
+                    'expires_at' => $expiresAt,
+                    'created_at' => $now
+                ]
+            );
+            Log::info("DB: OTP stored/updated for {$user->email}");
 
-        // Send OTP email
+        } catch (\Exception $e) {
+            Log::error('DB: Failed to store/update password reset OTP: ' . $e->getMessage(), [
+                'user_email' => $user->email, 'exception' => $e
+            ]);
+            return $this->errorResponse('Could not process your password reset request. Please try again later.', Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
         try {
             Mail::to($user->email)->send(new PasswordResetOtpMail($otp, $user->first_name ?? 'User'));
-            return response()->json(['message' => 'Password reset OTP has been sent to your email.']);
+            return $this->successResponse(null, 'Password reset OTP has been sent to your email.', Response::HTTP_OK, false);
         } catch (\Exception $e) {
             Log::error('Failed to send password reset OTP email: ' . $e->getMessage(), ['user_email' => $user->email]);
-            // Don't expose detailed error to user
-            return response()->json(['error' => 'Could not send OTP email. Please try again later.'], 500);
+            return $this->errorResponse('Could not send OTP email. Please try again later.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -198,123 +221,66 @@ class UserAuthController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return $this->validationErrorResponse($validator);
         }
 
-        // Find OTP record
+        // Find OTP record using DB::table()
         $otpRecord = DB::table('password_reset_otps')
             ->where('email', $request->email)
             ->where('otp', $request->otp)
             ->first();
 
         if (!$otpRecord) {
-            return response()->json(['error' => 'Invalid or incorrect OTP.'], 400);
+            return $this->errorResponse('Invalid or incorrect OTP.', Response::HTTP_BAD_REQUEST);
         }
 
         // Check if OTP has expired
         if (Carbon::parse($otpRecord->expires_at)->isPast()) {
-            // Optionally delete expired OTP
-            DB::table('password_reset_otps')->where('email', $request->email)->delete();
-            return response()->json(['error' => 'OTP has expired. Please request a new one.'], 400);
+            DB::table('password_reset_otps')->where('email', $request->email)->delete(); // Delete expired OTP
+            return $this->errorResponse('OTP has expired. Please request a new one.', Response::HTTP_BAD_REQUEST);
         }
 
-        // Find user and update password
-        $user = User::where('email', $request->email)->first();
-        if ($user) {
+        try {
+            $user = User::where('email', $request->email)->firstOrFail();
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->notFoundResponse('User with this email not found for password reset.');
+        }
+
+        try {
             $user->password = Hash::make($request->password);
             $user->save();
 
-            // Delete OTP record after successful reset
-            DB::table('password_reset_otps')->where('email', $request->email)->delete();
+            DB::table('password_reset_otps')->where('email', $request->email)->delete(); // Delete OTP record
 
-            // Optional: Invalidate all existing tokens for this user if you want them to re-login
-            // This requires tymon/jwt-auth to be configured for blacklisting if you use that feature.
-            // Or, just let existing tokens expire naturally.
+            return $this->successResponse(null, 'Password has been reset successfully.', Response::HTTP_OK, false);
 
-            return response()->json(['message' => 'Password has been reset successfully.']);
+        } catch (\Exception $e) {
+            Log::error('Failed to reset password for user: ' . $request->email . '. Error: ' . $e->getMessage(), ['exception' => $e]);
+            return $this->errorResponse('Could not reset your password at this time.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        return response()->json(['error' => 'User not found.'], 404); // Should not happen if exists rule works
     }
 
-    /**
-     * Change Authenticated User's Password.
-     * Route: POST /user/auth/change-password (Requires auth)
-     */
     public function changePassword(Request $request)
     {
-        /** @var \App\Models\User $user */
-        $user = $request->user(); // Get authenticated user
-
+        $user = $request->user();
         $validator = Validator::make($request->all(), [
-            'current_password' => ['required', 'string', function ($attribute, $value, $fail) use ($user) {
-                if (!Hash::check($value, $user->password)) {
-                    $fail('The current password does not match our records.');
-                }
-            }],
-            'password' => ['required', 'confirmed', Password::defaults(), 'different:current_password'],
+            'current_password' => ['required','string', function ($attr, $val, $fail) use ($user) { if (!Hash::check($val, $user->password)) $fail('Current password incorrect.'); }],
+            'password' => ['required','confirmed', Password::defaults(), 'different:current_password'],
         ]);
+        if ($validator->fails()) return $this->validationErrorResponse($validator);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        // Update password
         $user->password = Hash::make($request->password);
         $user->save();
 
-        // Optional: Invalidate current token and force re-login
-        // try {
-        //    auth($this->guard)->logout(); // Logs out current session
-        // } catch (\Exception $e) { /* Silently fail or log */ }
-
-        return response()->json(['message' => 'Password changed successfully.']);
-    }
-
-    /**
-     * Update the authenticated User's profile.
-     * Route: PUT /user/auth/profile (Requires User auth)
-     */
-    public function updateProfile(Request $request)
-    {
-        /** @var \App\Models\User $user */
-        $user = $request->user(); // Get authenticated user from the 'api_user' guard
-
-        if (!$user) {
-            // Should not happen if middleware is correct
-            return response()->json(['error' => 'User not authenticated.'], 401);
+        // --- Send Password Changed Notification ---
+        try {
+            Mail::to($user->email)->send(new PasswordChangedMail($user));
+            Log::info("Password changed notification sent to {$user->email} after OTP reset.");
+        } catch (\Exception $e) {
+            Log::error('Failed to send password changed (OTP reset) email: ' . $e->getMessage(), ['user_email' => $user->email]);
         }
+        // --- End Send Notification ---
 
-        $validator = Validator::make($request->all(), [
-            'first_name' => 'sometimes|required|string|max:100',
-            'last_name' => 'sometimes|required|string|max:100',
-            'email' => [
-                'sometimes',
-                'required',
-                'string',
-                'email',
-                'max:100',
-                Rule::unique('users', 'email')->ignore($user->id), // Email must be unique, ignoring self
-            ],
-            'phone' => [
-                'nullable', // Allow phone to be set to null
-                'string',
-                'max:20',
-                Rule::unique('users', 'phone')->ignore($user->id), // Phone must be unique (if provided), ignoring self
-            ],
-            // Add other updatable fields for user profile if any
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        // Update only the validated fields that are present in the request
-        $user->fill($validator->validated());
-        $user->save();
-
-        // Return the updated user profile.
-        // The User model's $hidden array should take care of sensitive fields.
-        return response()->json($user);
+        return $this->successResponse(null, 'Password changed successfully.', Response::HTTP_OK, false);
     }
 }

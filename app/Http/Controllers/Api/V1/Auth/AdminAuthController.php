@@ -3,182 +3,133 @@
 namespace App\Http\Controllers\Api\V1\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\ApiResponseTrait; // <-- USE TRAIT
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use App\Models\Admin; // Use Admin model
-use Illuminate\Validation\Rule;
+use App\Models\Admin;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Validation\Rules\Password;
-use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Illuminate\Http\Response;
 
 class AdminAuthController extends Controller
 {
-    protected $guard = 'api_admin'; // Specify the admin guard
+    use ApiResponseTrait; // <-- INCLUDE TRAIT
+    protected $guard = 'api_admin';
 
-    // public function __construct()
-    // {
-    //     $this->middleware('auth:' . $this->guard, ['except' => ['login']]); // No public registration for admins typically
-    // }
+    protected function formatTokenResponse($token, $admin) // Renamed param
+    {
+        return [
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => auth($this->guard)->factory()->getTTL() * 60,
+            'user' => $admin // Use admin param
+        ];
+    }
 
-    // NOTE: No public register function for Admins usually. They are created manually or by other Admins.
-
-    /**
-     * Admin Login
-     */
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
+            'email' => 'required|string|email',
             'password' => 'required|string|min:6',
         ]);
 
         if ($validator->fails()) {
-            return response()->json($validator->errors(), 422);
+            return $this->validationErrorResponse($validator);
         }
 
-        if (! $token = auth($this->guard)->attempt($validator->validated())) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+        $credentials = $validator->validated();
+
+        // Check if admin with the given email exists
+        $admin = Admin::where('email', $credentials['email'])->first();
+
+        if (!$admin) {
+            // Admin with this email does not exist
+            return $this->errorResponse('Email not found.', Response::HTTP_UNAUTHORIZED);
         }
-        $admin = auth($this->guard)->user();
-        return $this->respondWithToken($token, $admin);
+
+        // Admin exists, now check the password
+        if (!Hash::check($credentials['password'], $admin->password)) {
+            // Password for the existing admin is incorrect
+            return $this->errorResponse('Incorrect password.', Response::HTTP_UNAUTHORIZED);
+        }
+
+        // If email and password are correct, attempt to get a token
+        if (! $token = auth($this->guard)->attempt($credentials)) {
+            // Fallback for other auth issues
+            return $this->errorResponse('Login failed. Please try again.', Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $this->successResponse(
+            $this->formatTokenResponse($token, $admin), // Pass the $admin object
+            'Admin login successful.'
+        );
     }
 
-    /**
-     * Admin Logout
-     */
+
     public function logout()
     {
-         try {
+        try {
             auth($this->guard)->logout();
-            return response()->json(['message' => 'Admin successfully signed out']);
-         } catch (\Exception $e) {
-            return response()->json(['error' => 'Could not sign out, please try again.'], 500);
-         }
+            return $this->successResponse(null, 'Admin successfully signed out.', Response::HTTP_OK, false);
+        } catch (\Exception $e) {
+            Log::error('Admin logout failed: ' . $e->getMessage());
+            return $this->errorResponse('Could not sign out.', Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
-    /**
-     * Refresh Token
-     */
     public function refresh()
     {
         try {
-             $newToken = auth($this->guard)->refresh();
-             return $this->respondWithToken($newToken, auth($this->guard)->user());
+            $newToken = auth($this->guard)->refresh();
+            return $this->successResponse($this->formatTokenResponse($newToken, auth($this->guard)->user()), 'Token refreshed successfully.');
         } catch (\Tymon\JWTAuth\Exceptions\TokenInvalidException $e) {
-             return response()->json(['error' => 'Token is invalid'], 401);
+            return $this->errorResponse('Token is invalid.', Response::HTTP_UNAUTHORIZED);
         } catch (\Tymon\JWTAuth\Exceptions\JWTException $e) {
-             return response()->json(['error' => 'Could not refresh token'], 500);
+            return $this->errorResponse('Could not refresh token.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
-    /**
-     * Get Authenticated Admin Profile
-     */
     public function profile()
     {
         try {
-            $admin = auth($this->guard)->userOrFail();
-            return response()->json($admin);
+            return $this->successResponse(auth($this->guard)->userOrFail());
         } catch (\Tymon\JWTAuth\Exceptions\UserNotDefinedException $e) {
-             return response()->json(['error' => 'Admin not found or token invalid'], 404);
+            return $this->notFoundResponse('Admin not found or token invalid.');
         }
     }
 
-    /**
-     * Helper function to format the token response
-     */
-    protected function respondWithToken($token, $admin)
+    public function updateProfile(Request $request)
     {
-        return response()->json([
-            'access_token' => $token,
-            'token_type' => 'bearer',
-            'expires_in' => auth($this->guard)->factory()->getTTL() * 60,
-            'user' => $admin // Or use 'admin' key if preferred
+        $admin = $request->user();
+        if (!$admin) return $this->unauthorizedResponse('Admin not authenticated.');
+
+        $validator = Validator::make($request->all(), [
+            'name' => 'sometimes|required|string|max:255',
+            'email' => ['sometimes','required','string','email','max:255', Rule::unique('admins', 'email')->ignore($admin->id)],
         ]);
+        if ($validator->fails()) return $this->validationErrorResponse($validator);
+
+        $admin->fill($validator->validated());
+        $admin->save();
+        return $this->successResponse($admin, 'Admin profile updated successfully.');
     }
 
     public function changePassword(Request $request)
     {
-        /** @var \App\Models\Admin $admin */
-        $admin = $request->user(); // Get authenticated admin from the 'api_admin' guard
-
-        if (!$admin) {
-            // This should theoretically not happen if middleware is applied correctly
-            return response()->json(['error' => 'Admin not authenticated.'], 401);
-        }
+        $admin = $request->user();
+        if (!$admin) return $this->unauthorizedResponse('Admin not authenticated.');
 
         $validator = Validator::make($request->all(), [
-            'current_password' => ['required', 'string', function ($attribute, $value, $fail) use ($admin) {
-                if (!Hash::check($value, $admin->password)) {
-                    $fail('The current password does not match our records.');
-                }
-            }],
-            'password' => [
-                'required',
-                'confirmed',
-                Password::defaults(), // Use Laravel's default password strength rules
-                'different:current_password' // New password must be different
-            ],
+            'current_password' => ['required','string', function ($attr, $val, $fail) use ($admin) { if (!Hash::check($val, $admin->password)) $fail('Current password incorrect.'); }],
+            'password' => ['required','confirmed', Password::defaults(), 'different:current_password'],
         ]);
+        if ($validator->fails()) return $this->validationErrorResponse($validator);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        // Update password
         $admin->password = Hash::make($request->password);
         $admin->save();
-
-        // Optional: Invalidate current token to force re-login for enhanced security.
-        // This depends on your desired UX. If you do this, the client will get a 200 OK
-        // but their current token will no longer work for subsequent requests.
-        // try {
-        //    auth($this->guard)->logout(); // Logs out current admin session
-        //    Log::info("Admin ID {$admin->id} changed password and was logged out.");
-        // } catch (\Exception $e) {
-        //    Log::error("Error logging out admin after password change: " . $e->getMessage());
-        // }
-
-        return response()->json(['message' => 'Password changed successfully.']);
-    }
-
-    /**
-     * Update the authenticated Admin's profile.
-     * Route: PUT /admin/auth/profile (Requires Admin auth)
-     */
-    public function updateProfile(Request $request)
-    {
-        /** @var \App\Models\Admin $admin */
-        $admin = $request->user(); // Get authenticated admin
-
-        if (!$admin) {
-            return response()->json(['error' => 'Admin not authenticated.'], 401);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255',
-            'email' => [
-                'sometimes',
-                'required',
-                'string',
-                'email',
-                'max:255',
-                Rule::unique('admins', 'email')->ignore($admin->id), // Email must be unique, ignoring self
-            ],
-            // Add other fields if Admins have more updatable profile attributes
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        // Update only the validated fields that are present in the request
-        $admin->fill($validator->validated());
-        $admin->save();
-
-        return response()->json($admin);
+        return $this->successResponse(null, 'Admin password changed successfully.', Response::HTTP_OK, false);
     }
 }
