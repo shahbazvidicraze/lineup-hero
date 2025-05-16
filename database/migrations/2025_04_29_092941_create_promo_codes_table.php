@@ -18,6 +18,7 @@ return new class extends Migration
             $table->unsignedInteger('max_uses')->nullable(); // Max times the code can be used globally (null = infinite)
             $table->unsignedInteger('use_count')->default(0); // How many times it has been used globally
             $table->unsignedInteger('max_uses_per_user')->default(1); // Max times one user can use this code (usually 1)
+            // $table->unsignedInteger('duration_in_days')->nullable();
             $table->boolean('is_active')->default(true); // Admin can toggle activation
             $table->timestamps();
         });

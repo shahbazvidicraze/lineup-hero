@@ -18,11 +18,13 @@ class Settings extends Model
         'unlock_currency_symbol_position',
         'notify_admin_on_payment',      // <-- ADDED
         'admin_notification_email',   // <-- ADDED
+        'access_duration_days',
     ];
 
     protected $casts = [
-        'unlock_price_amount' => 'integer',
+        'unlock_price_amount' => 'decimal:2',
         'notify_admin_on_payment' => 'boolean', // <-- ADDED
+        'access_duration_days' => 'integer',
     ];
 
     protected $table = 'settings';
@@ -30,18 +32,11 @@ class Settings extends Model
 
     public static function instance(bool $forceRefresh = false): self
     {
-        if ($forceRefresh) Cache::forget(self::CACHE_KEY);
-        return Cache::remember(self::CACHE_KEY, now()->addHour(), function () {
-            return self::firstOrCreate([], [
-                'optimizer_service_url' => "https://lineup-hero-optimizer.vercel.app/optimize",
-                'unlock_price_amount' => 500,
-                'unlock_currency' => 'usd',
-                'unlock_currency_symbol' => '$',
-                'unlock_currency_symbol_position' => 'before',
-                'notify_admin_on_payment' => true, // Default value
-                'admin_notification_email' => config('mail.from.address', 'admin@example.com'), // Default value
-            ]);
-        });
+        return self::first();
+//        if ($forceRefresh) Cache::forget(self::CACHE_KEY);
+//        return Cache::remember(self::CACHE_KEY, now()->addHour(), function () {
+//            return self::first();
+//        });
     }
 
     /**

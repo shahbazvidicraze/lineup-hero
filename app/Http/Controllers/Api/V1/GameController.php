@@ -214,6 +214,53 @@ class GameController extends Controller
 
     public function getLineupPdfData(Request $request, Game $game)
     {
+        try {
+            // Policy check: GamePolicy@viewPdfData
+            $this->authorize('viewPdfData', $game);
+        } catch (AuthorizationException $e) {
+            // If authorization fails, check if it's due to expiry
+            $game->loadMissing('team'); // Ensure team is loaded for the check below
+
+            if ($game->team && $game->team->user_id === $request->user()->id) { // User owns the team
+                if ($game->team->hasAccessExpired()) {
+                    return $this->forbiddenResponse('Your team\'s access to PDF generation has expired. Please renew your subscription or apply a new promo code.');
+                } else if (!in_array($game->team->access_status, ['paid_active', 'promo_active'])) {
+                    return $this->forbiddenResponse('Access Denied. This team does not have active paid access or a valid promo code applied.');
+                }
+            }
+            // Default forbidden if ownership check also fails or other policy reasons
+            return $this->forbiddenResponse('Access Denied. You may not have permission or the team lacks active access.');
+        }
+
+        // --- Proceed with data fetching if authorized ---
+        // ... (rest of the getLineupPdfData method as before) ...
+        $lineupArray = is_object($game->lineup_data) ? json_decode(json_encode($game->lineup_data), true) : $game->lineup_data;
+        if (empty($lineupArray) || !is_array($lineupArray)) return $this->notFoundResponse('No valid lineup data for this game.');
+
+        $playerIds = collect($lineupArray)->pluck('player_id')->filter()->unique()->toArray();
+        $playersMap = [];
+        if (!empty($playerIds)) {
+            $playersMap = \App\Models\Player::whereIn('id', $playerIds)
+                ->select(['id', 'first_name', 'last_name', 'jersey_number'])
+                ->get()
+                ->keyBy('id')
+                ->map(fn ($p) => ['id'=>$p->id, 'full_name'=>$p->full_name, 'jersey_number'=>$p->jersey_number])
+                ->all();
+        }
+
+        $game->loadMissing('team:id,name');
+        $gameDetails = [
+            'id' => $game->id, 'team_name' => $game->team?->name ?? 'N/A',
+            'opponent_name' => $game->opponent_name ?? 'N/A',
+            'game_date' => $game->game_date?->toISOString(),
+            'innings_count' => $game->innings, 'location_type' => $game->location_type
+        ];
+        $responseData = ['game_details' => $gameDetails, 'players_info' => (object)$playersMap, 'lineup_assignments' => $lineupArray];
+        return $this->successResponse($responseData, 'PDF data retrieved successfully.');
+    }
+
+    public function getLineupPdfData_old(Request $request, Game $game)
+    {
         try { $this->authorize('viewPdfData', $game); }
         catch (AuthorizationException $e) { return $this->forbiddenResponse('Access Denied. Ensure team has active access.'); }
 

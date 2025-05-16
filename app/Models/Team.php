@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Models\Settings;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
 
 class Team extends Model
 {
@@ -87,22 +89,49 @@ class Team extends Model
     }
 
     /**
-     * Grant access via Promo Code (assumes permanent unless promo has expiry logic)
+     * NEW METHOD: Check if the team's access has specifically expired.
+     * This assumes that if access_status is 'paid_active' or 'promo_active'
+     * but access_expires_at is in the past, then it's an "expired" state.
      */
-    public function grantPromoAccess(): void
+    public function hasAccessExpired(): bool
     {
-        $this->access_status = 'promo_active';
-        $this->access_expires_at = null; // Or set based on promo code details if they grant timed access
-        $this->save();
+        // It can only be considered "expired" if it once had an active status
+        // and has an expiry date that is now in the past.
+        if (in_array($this->access_status, ['paid_active', 'promo_active']) &&
+            $this->access_expires_at &&
+            $this->access_expires_at->isPast()) {
+            return true;
+        }
+        return false;
     }
 
     /**
-     * Grant access via Payment (assumes permanent or set expiry based on purchase type)
+     * Grant access via Promo Code using duration from settings.
+     * @return Carbon The calculated expiry date.
      */
-    public function grantPaidAccess(?\DateTimeInterface $expiresAt = null): void
+    public function grantPromoAccess(): Carbon
     {
-        $this->access_status = 'paid_active';
-        $this->access_expires_at = $expiresAt; // Set expiry if applicable (e.g., subscription)
+        $settings = Settings::instance();
+        $durationDays = $settings->access_duration_days > 0 ? $settings->access_duration_days : 365;
+
+        $this->access_status = 'promo_active';
+        $this->access_expires_at = Carbon::now()->addDays($durationDays);
         $this->save();
+        return $this->access_expires_at; // Return the expiry date
+    }
+
+    /**
+     * Grant access via Payment using duration from settings.
+     * @return Carbon The calculated expiry date.
+     */
+    public function grantPaidAccess(): Carbon // Removed $expiresAt parameter
+    {
+        $settings = Settings::instance();
+        $durationDays = $settings->access_duration_days > 0 ? $settings->access_duration_days : 365;
+
+        $this->access_status = 'paid_active';
+        $this->access_expires_at = Carbon::now()->addDays($durationDays);
+        $this->save();
+        return $this->access_expires_at; // Return the expiry date
     }
 }

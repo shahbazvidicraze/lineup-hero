@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id();
             $table->text('optimizer_service_url')->default('https://lineup-optimizer-api.vercel.app/optimize');
             $table->integer('optimizer_timeout')->default(60);
-            $table->integer('unlock_price_amount')->default(2);
+            $table->decimal('unlock_price_amount', 8, 2)->default(19.99);
+            $table->unsignedInteger('access_duration_days')->default(365);
             $table->string('unlock_currency')->default('usd');
             $table->string('unlock_currency_symbol')->default('$');
             $table->boolean('notify_admin_on_payment')->default(true);

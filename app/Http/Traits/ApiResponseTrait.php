@@ -167,4 +167,28 @@ trait ApiResponseTrait
     {
         return $this->errorResponse($message, Response::HTTP_FORBIDDEN);
     }
+
+    /**
+     * Get a human-readable duration string from a number of days.
+     *
+     * @param int $days
+     * @return string
+     */
+    protected function getHumanReadableDuration(int $days): string
+    {
+        if ($days <= 0) {
+            return "for a very short period"; // Or handle as error
+        }
+        if ($days >= 360 && $days <= 370) { // Roughly a year
+            return "annually (for {$days} days)";
+        } elseif ($days >= 175 && $days <= 185) { // Roughly 6 months
+            return "for 6 months (approx. {$days} days)";
+        } elseif ($days >= 28 && $days <= 32) { // Roughly a month
+            return "monthly (approx. {$days} days)";
+        } elseif ($days % 7 === 0 && $days / 7 >= 1 && $days / 7 <= 8) { // Weeks
+            $weeks = $days / 7;
+            return "for {$weeks} " . ($weeks > 1 ? "weeks" : "week") . " ({$days} days)";
+        }
+        return "for {$days} days"; // Default
+    }
 }

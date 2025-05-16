@@ -18,6 +18,7 @@ class PromoCode extends Model
         // 'use_count' should generally not be mass assignable
         'max_uses_per_user',
         'is_active',
+        //'duration_in_days',
     ];
 
     protected $casts = [
@@ -26,6 +27,7 @@ class PromoCode extends Model
         'use_count' => 'integer',
         'max_uses_per_user' => 'integer',
         'is_active' => 'boolean',
+        //'duration_in_days' => 'integer',
     ];
 
     /**

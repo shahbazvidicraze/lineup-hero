@@ -27,6 +27,7 @@ class AdminPromoCodeController extends Controller
             'description' => 'nullable|string|max:1000', 'expires_at' => 'nullable|date|after:now',
             'max_uses' => 'nullable|integer|min:1', 'max_uses_per_user' => 'sometimes|required|integer|min:1',
             'is_active' => 'sometimes|boolean',
+            //'duration_in_days' => 'sometimes|required|integer',
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
 
@@ -57,6 +58,7 @@ class AdminPromoCodeController extends Controller
             'max_uses' => 'nullable|integer|min:' . $promoCode->use_count,
             'max_uses_per_user' => 'sometimes|required|integer|min:1',
             'is_active' => 'sometimes|boolean',
+            //'duration_in_days' => 'sometimes|required|integer',
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
 

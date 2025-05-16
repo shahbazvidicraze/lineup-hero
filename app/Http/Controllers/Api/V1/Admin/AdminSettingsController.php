@@ -31,6 +31,7 @@ class AdminSettingsController extends Controller
             'unlock_currency_symbol_position' => ['sometimes','required', Rule::in(['before', 'after'])],
             'notify_admin_on_payment' => 'sometimes|required|boolean', // <-- ADDED
             'admin_notification_email' => ['nullable', 'email', 'max:255', Rule::requiredIf( (bool) $request->input('notify_admin_on_payment', $settings->notify_admin_on_payment) )], // <-- ADDED
+            'access_duration_days' => 'sometimes|required|integer|min:1',
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
 

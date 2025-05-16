@@ -157,8 +157,14 @@ class StripeController extends Controller
             'status' => $paymentIntent->status,
             'paid_at' => now(),
         ]);
-        $team->grantPaidAccess(null); // Grant access (decide expiry based on business logic)
-        Log::info("Access granted for Team ID {$teamId} via PaymentIntent {$paymentIntent->id}");
+
+        $accessExpiryDate = $team->grantPaidAccess(); // This now returns the Carbon expiry date
+        $settings = Settings::instance(); // Get settings to read duration for notification
+        $durationDays = $settings->access_duration_days > 0 ? $settings->access_duration_days : 365;
+        $durationString = $this->getHumanReadableDuration($durationDays); // Use helper
+
+        Log::info("Access granted for Team ID {$teamId} via PI {$paymentIntent->id} for {$durationString}. Expires: {$accessExpiryDate->toIso8601String()}");
+
 
         // --- Send User Payment Success Notification (Check Preference) ---
         if ($user->email && $user->receive_payment_notifications) { // <-- CHECK PREFERENCE
