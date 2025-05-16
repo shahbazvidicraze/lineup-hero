@@ -46,7 +46,7 @@ class StripeController extends Controller
         }
 
         $settings = Settings::instance();
-        $amount = $settings->unlock_price_amount;
+        $amount = ($settings->unlock_price_amount*100);
         $currency = $settings->unlock_currency;
 
         if (!$amount || !$currency) {

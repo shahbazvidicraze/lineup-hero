@@ -3,7 +3,7 @@
 
     Hi {{ $userName }},
 
-    We encountered an issue processing your payment of {{ $currency }}{{ $amountFormatted }} for team "{{ $teamName }}" on {{ $appName }}.
+    We encountered an issue processing your payment of {{ $amountFormatted }} {{ $currency }} for team "{{ $teamName }}" on {{ $appName }}.
 
     Reason: {{ $failureMessage }}
 
