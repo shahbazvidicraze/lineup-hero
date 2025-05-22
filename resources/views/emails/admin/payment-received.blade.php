@@ -16,7 +16,7 @@
     Team Details:
     - Team Name: {{ $team->name }}
 
-    Access for this team has been updated to 'paid_active'.
+    Access for this team has been granted.
 
     Thanks,
     {{ $appName }} System

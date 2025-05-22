@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait; // <-- USE TRAIT
 use App\Models\Team;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Http\Response;
@@ -19,15 +20,7 @@ class TeamController extends Controller
         $user = $request->user();
         $teams = $user->teams()
             ->with('organization') // Eager load organization if needed
-            ->when($request->has('season'), function ($query) use ($request) {
-                return $query->where('season', $request->input('season'));
-            })
-            ->when($request->has('year'), function ($query) use ($request) {
-                return $query->where('year', $request->input('year'));
-            })
-            ->orderBy('created_at', 'desc')
-//                      ->orderBy('year', 'desc')
-//                      ->orderBy('season', 'asc') // Adjust ordering as needed
+            ->orderBy('id', 'desc')
             ->get();
         // Return paginated data using the trait
         // $teams = $query->paginate($request->input('per_page', 15));
@@ -103,7 +96,7 @@ class TeamController extends Controller
         if ($request->user()->id !== $team->user_id && !$request->user('api_admin')) {
             return $this->forbiddenResponse('Cannot access this team\'s players.');
         }
-        $players = $team->players()->select(['id','team_id','first_name','last_name','jersey_number','email'])->orderBy('last_name')->orderBy('first_name')->get();
+        $players = $team->players()->select(['id','team_id','first_name','last_name','jersey_number','email', 'phone'])->orderBy('last_name')->orderBy('first_name')->get();
         // $players = $team->players()->select([...])->orderBy(...)->paginate(50);
         // return $this->successResponse($players, 'Players retrieved successfully.');
 

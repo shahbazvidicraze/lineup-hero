@@ -26,6 +26,7 @@ class PlayerController extends Controller
             'last_name' => 'required|string|max:100',
             'jersey_number' => 'nullable|string|max:10',
             'email' => ['nullable','email','max:255', Rule::unique('players', 'email')],
+            'phone' => ['nullable','string','max:20', Rule::unique('players', 'phone')],
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
 
@@ -53,6 +54,7 @@ class PlayerController extends Controller
             'last_name' => 'sometimes|required|string|max:100',
             'jersey_number' => 'nullable|string|max:10',
             'email' => ['nullable','email','max:255', Rule::unique('players', 'email')->ignore($player->id)],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:20', Rule::unique('players', 'phone')->ignore($player->id)],
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
 

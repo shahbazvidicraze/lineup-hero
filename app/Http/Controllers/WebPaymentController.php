@@ -34,10 +34,14 @@ class WebPaymentController extends Controller
         // We don't know which user is initiating, CANNOT reliably check ownership here!
         // Anyone knowing the team ID can reach this point.
 
+        $settings = Settings::instance();
+        $amount = ($settings->unlock_price_amount*100); // Amount in cents
+        $currency = $settings->unlock_currency;
+
         // Check if team already has access (still useful)
         if ($team->hasActiveAccess()) {
             // Redirect or show message - maybe redirect to a generic success page?
-             return redirect('/')->with('info', 'Team ' . $team->name . ' already has active access.'); // Redirect to homepage
+             return view('/payments/pre-activated', ['team' => $team, 'amount' => $amount, 'currency' => $currency, 'message' => 'Team ' . $team->name . ' already has active access.']); // Redirect to homepage
         }
 
         // Fetch the owner of the team to store their info in metadata
@@ -114,12 +118,20 @@ class WebPaymentController extends Controller
             if ($paymentIntent->status === 'succeeded') {
                  $teamId = $paymentIntent->metadata->team_id ?? null;
                  $teamName = $paymentIntent->metadata->team_name ?? 'your team';
-                 return view('payments.success', ['teamId' => $teamId, 'teamName' => $teamName]);
+                 $team = Team::find($teamId);
+                $settings = Settings::instance();
+                $amount = ($settings->unlock_price_amount*100); // Amount in cents
+                $currency = $settings->unlock_currency;
+
+                 return view('payments.success', ['team' => $team, 'amount' => $amount, 'currency' => $currency]);
             } elseif ($paymentIntent->status === 'processing') {
                  return view('payments.processing');
             } else {
+                $settings = Settings::instance();
+                $amount = ($settings->unlock_price_amount*100); // Amount in cents
+                $currency = $settings->unlock_currency;
                  Log::warning("Payment Return: PaymentIntent {$paymentIntent->id} status is {$paymentIntent->status}");
-                 return view('payments.failed', ['message' => 'Payment attempt failed or requires action. Please try again.']);
+                 return view('payments.failed', ['amount' => $amount, 'currency' => $currency, 'message' => 'Payment attempt failed or requires action. Please try again.']);
             }
         } catch (ApiErrorException $e) {
              Log::error("Payment Return: Error retrieving PI {$paymentIntentId}: " . $e->getMessage());

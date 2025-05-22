@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use App\Models\Settings;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use App\Models\Settings;
 
 class Team extends Model
 {

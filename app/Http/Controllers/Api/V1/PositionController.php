@@ -25,11 +25,11 @@ class PositionController extends Controller
     public function index(Request $request)
     {
         if ($request->user('api_admin')) { // Check if called from admin context
-            $positions = Position::orderBy('category')->orderBy('name')->paginate($request->input('per_page', 50));
+            $positions = Position::orderBy('id')->orderBy('name')->paginate($request->input('per_page', 50));
             // The successResponse trait handles paginator instances correctly
             return $this->successResponse($positions, 'Positions retrieved successfully (Admin View).');
         } else {
-            $positions = Position::orderBy('category')->orderBy('name')->get();
+            $positions = Position::orderBy('id')->orderBy('name')->get();
             return $this->successResponse($positions, 'Positions retrieved successfully.');
         }
     }

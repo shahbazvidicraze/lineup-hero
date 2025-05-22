@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 class Player extends Model
 {
     use HasFactory;
-    protected $fillable = ['team_id', 'first_name', 'last_name', 'jersey_number', 'email'];
+    protected $fillable = ['team_id', 'first_name', 'last_name', 'jersey_number', 'email', 'phone'];
     protected ?array $calculatedStatsCache = null;
     protected $appends = ['stats', 'full_name']; // Add full_name if you want it directly
 

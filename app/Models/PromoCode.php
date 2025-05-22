@@ -18,7 +18,7 @@ class PromoCode extends Model
         // 'use_count' should generally not be mass assignable
         'max_uses_per_user',
         'is_active',
-        //'duration_in_days',
+        // 'duration_in_days',
     ];
 
     protected $casts = [
@@ -27,7 +27,7 @@ class PromoCode extends Model
         'use_count' => 'integer',
         'max_uses_per_user' => 'integer',
         'is_active' => 'boolean',
-        //'duration_in_days' => 'integer',
+        // 'duration_in_days' => 'integer',
     ];
 
     /**
@@ -53,11 +53,11 @@ class PromoCode extends Model
     {
         $query->where(function ($q) {
             $q->whereNull('expires_at')
-              ->orWhere('expires_at', '>', now());
+                ->orWhere('expires_at', '>', now());
         });
     }
 
-     /**
+    /**
      * Check if the promo code has reached its global usage limit.
      */
     public function hasReachedMaxUses(): bool

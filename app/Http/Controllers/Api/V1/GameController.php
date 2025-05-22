@@ -33,7 +33,7 @@ class GameController extends Controller
         return $user && $game->team && $user->id === $game->team->user_id;
     }
 
-     /**
+    /**
      * Check if the authenticated user owns the team before creating a game for it.
      * Note: Direct checks often replaced by Policy/Gate checks now.
      */
@@ -55,6 +55,7 @@ class GameController extends Controller
             ->get(['id', 'team_id', 'opponent_name', 'game_date', 'innings', 'location_type', 'submitted_at']);
         return $this->successResponse($games, 'Games retrieved successfully.');
     }
+
 
     public function store(Request $request, Team $team)
     {
@@ -150,7 +151,153 @@ class GameController extends Controller
         );
     }
 
+    /**
+     * Trigger the auto-complete feature, get positional assignments from Python,
+     * then assign a batting order sequentially.
+     */
     public function autocompleteLineup(Request $request, Game $game)
+    {
+        try {
+            $this->authorize('update', $game); // Or a specific 'optimizeLineup' permission
+        } catch (AuthorizationException $e) {
+            return $this->forbiddenResponse('Cannot optimize lineup for this game.');
+        }
+
+        $validator = Validator::make($request->all(), [
+            'fixed_assignments' => 'present|array',
+            'fixed_assignments.*' => 'sometimes|array',
+            'fixed_assignments.*.*' => 'sometimes|string|exists:positions,name',
+            'players_in_game' => 'required|array|min:1',
+            'players_in_game.*' => ['integer', Rule::exists('players', 'id')->where('team_id', $game->team_id)],
+        ]);
+        if ($validator->fails()) { return $this->validationErrorResponse($validator); }
+
+        $fixedAssignmentsInput = $request->input('fixed_assignments', []);
+        $playersInGameIds = $request->input('players_in_game'); // This defines the order for batting
+
+
+        // --- Data Preparation for Python ---
+        try {
+            // Fetch players with preferences
+            $playersForPayload = Player::with(['preferredPositions:id,name', 'restrictedPositions:id,name'])
+                ->whereIn('id', $playersInGameIds)
+                ->get();
+
+            $actualCounts = [];
+            $playerPreferences = [];
+            foreach ($playersForPayload as $player) {
+                $stats = $player->stats; // Uses accessor in Player model
+                $actualCounts[(string)$player->id] = $stats['position_counts'] ?? (object)[];
+                $playerPreferences[(string)$player->id] = [
+                    'preferred' => $player->preferredPositions->pluck('name')->toArray(),
+                    'restricted' => $player->restrictedPositions->pluck('name')->toArray(),
+                ];
+            }
+
+            $formattedFixedAssignments = [];
+            if (is_array($fixedAssignmentsInput) && !empty($fixedAssignmentsInput)) {
+                foreach ($fixedAssignmentsInput as $playerId => $assignments) {
+                    if (is_array($assignments)) {
+                        $formattedFixedAssignments[(string)$playerId] = $assignments;
+                    }
+                }
+            }
+            $finalFixedAssignments = empty($formattedFixedAssignments) ? (object)[] : $formattedFixedAssignments;
+
+            // --- Prepare Payload for Python (Positional Optimization) ---
+            $pythonPayload = [
+                'players' => collect($playersInGameIds)->map(fn($id) => (string)$id)->toArray(),
+                'fixed_assignments' => $finalFixedAssignments,
+                'actual_counts' => $actualCounts,
+                'game_innings' => $game->innings,
+                'player_preferences' => $playerPreferences,
+            ];
+
+            $settings = Settings::instance();
+            $optimizerUrl = $settings->optimizer_service_url;
+            $optimizerTimeout = config('services.lineup_optimizer.timeout', 60);
+
+            if (!$optimizerUrl) { throw new \Exception('Optimizer service URL not configured in settings.'); }
+
+            // --- Call Python Service ---
+            Log::info("Sending payload to optimizer: ", ['game_id' => $game->id, 'player_ids_count' => count($playersInGameIds)]);
+            $response = Http::timeout($optimizerTimeout)->acceptJson()->post($optimizerUrl, $pythonPayload);
+
+            // --- Process Python Response ---
+            if ($response->successful()) {
+                $positionalLineupData = $response->json(); // This is an array of {player_id, innings:{...}}
+                Log::info("Received optimized positional lineup.", ['game_id' => $game->id]);
+
+                if (!is_array($positionalLineupData)) { throw new \Exception('Optimizer returned invalid data format (not an array).'); }
+
+                // --- Assign Batting Order Heuristic ---
+                $finalLineupWithBattingOrder = [];
+                $battingSlot = 1;
+
+                // Create a map of positional assignments for easy lookup by player_id
+                $positionAssignmentsMap = collect($positionalLineupData)->keyBy(function ($item) {
+                    // Ensure player_id is treated consistently (e.g., as string for map keys)
+                    return (string) ($item['player_id'] ?? null);
+                });
+
+
+                // Iterate through the original players_in_game list to maintain desired batting order sequence
+                foreach ($playersInGameIds as $playerId) {
+                    $playerIdStr = (string)$playerId; // Ensure string for map lookup
+
+                    if ($positionAssignmentsMap->has($playerIdStr)) {
+                        $playerAssignment = $positionAssignmentsMap->get($playerIdStr);
+                        // Ensure innings is an object/array
+                        $playerAssignment['innings'] = isset($playerAssignment['innings']) && is_array($playerAssignment['innings'])
+                            ? (object)$playerAssignment['innings']
+                            : (object)[]; // Default to empty innings object
+
+                        $playerAssignment['batting_order'] = $battingSlot++;
+                        $finalLineupWithBattingOrder[] = $playerAssignment;
+                    } else {
+                        // This player was in the game list but optimizer didn't return assignment
+                        // (e.g. if fewer than 9 players were sent to optimizer accidentally, or optimizer error)
+                        // Add them with default "OUT" for all innings and no batting order, or handle as error
+                        Log::warning("Player ID {$playerIdStr} requested for game but not found in optimizer output. Marking as OUT.", ['game_id' => $game->id]);
+                        $outInnings = [];
+                        for ($i = 1; $i <= $game->innings; $i++) { $outInnings[(string)$i] = 'OUT'; }
+                        $finalLineupWithBattingOrder[] = [
+                            'player_id' => $playerIdStr,
+                            'batting_order' => null, // Or assign a slot if they should still "bat" while being subbed
+                            'innings' => (object)$outInnings
+                        ];
+                    }
+                }
+                // --- End Assign Batting Order ---
+
+                $game->lineup_data = $finalLineupWithBattingOrder;
+                $game->submitted_at = now();
+                $game->save();
+
+                return $this->successResponse(
+                    ['lineup' => $game->lineup_data],
+                    'Lineup optimized and saved successfully.'
+                );
+
+            } else { // Optimizer service call failed
+                $errorBody = $response->json() ?? ['error' => 'Unknown optimizer error', 'details' => $response->body()];
+                Log::error('Lineup optimizer service failed.', ['status' => $response->status(), 'body' => $errorBody, 'game_id' => $game->id]);
+                return $this->errorResponse(
+                    'Lineup optimization service failed.',
+                    $response->status(), // Use actual status from optimizer if available
+                    $errorBody['error'] ?? ($errorBody['details'] ?? 'Optimizer service error')
+                );
+            }
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            Log::error('HTTP Request to optimizer service failed: ' . $e->getMessage(), ['game_id' => $game->id]);
+            return $this->errorResponse('Could not connect to the lineup optimizer service.', Response::HTTP_SERVICE_UNAVAILABLE);
+        } catch (\Exception $e) {
+            Log::error('Autocomplete Error: ' . $e->getMessage(), ['exception' => $e, 'game_id' => $game->id]);
+            return $this->errorResponse('An internal error occurred during lineup optimization: '. $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    public function autocompleteLineup_old(Request $request, Game $game)
     {
         try { $this->authorize('update', $game); } // Or a specific 'optimizeLineup' permission
         catch (AuthorizationException $e) { return $this->forbiddenResponse('Cannot optimize lineup for this game.'); }
@@ -172,14 +319,15 @@ class GameController extends Controller
             $playerPreferences[(string)$player->id] = ['preferred' => $player->preferredPositions->pluck('name')->toArray(), 'restricted' => $player->restrictedPositions->pluck('name')->toArray()];
         }
         $finalFixedAssignments = empty($request->input('fixed_assignments',[])) ? (object)[] : $request->input('fixed_assignments',[]);
-        $payload = ['players' => collect($request->input('players_in_game'))->map(fn($id)=>(string)$id)->toArray(), /* + other data */
+        $payload = [
+            'players' => collect($request->input('players_in_game'))->map(fn($id)=>(string)$id)->toArray(), /* + other data */
             'fixed_assignments' => $finalFixedAssignments, 'actual_counts' => $actualCounts,
             'game_innings' => $game->innings, 'player_preferences' => $playerPreferences];
 
 
         try {
             $optimizerUrl = Settings::instance()->optimizer_service_url; // Using Settings model
-            $optimizerTimeout = config('services.lineup_optimizer.timeout', 60);
+            $optimizerTimeout = Settings::instance()->optimizer_timeout;;
             if (!$optimizerUrl) { throw new \Exception('Optimizer service URL not configured.'); }
 
             Log::info("Sending payload to optimizer: ", ['game_id' => $game->id]);
@@ -212,7 +360,68 @@ class GameController extends Controller
         }
     }
 
+    /**
+     * Provide JSON data required for the client (Flutter) to generate a PDF lineup.
+     * players_info will now be an array of player objects.
+     * Route: GET /games/{game}/pdf-data
+     */
     public function getLineupPdfData(Request $request, Game $game)
+    {
+        try {
+            $this->authorize('viewPdfData', $game);
+        } catch (AuthorizationException $e) {
+            $game->loadMissing('team');
+            if ($game->team && $game->team->user_id === $request->user()->id) {
+                if ($game->team->hasAccessExpired()) {
+                    return $this->forbiddenResponse('Your team\'s access to PDF generation has expired. Please renew.');
+                } else if (!in_array($game->team->access_status, ['paid_active', 'promo_active'])) {
+                    return $this->forbiddenResponse('Access Denied. Team does not have active access.');
+                }
+            }
+            return $this->forbiddenResponse('Access Denied. You may not have permission or the team lacks active access.');
+        }
+
+        $lineupArray = is_object($game->lineup_data) ? json_decode(json_encode($game->lineup_data), true) : $game->lineup_data;
+        if (empty($lineupArray) || !is_array($lineupArray)) {
+            return $this->notFoundResponse('No valid lineup data for this game.');
+        }
+
+        $playerIdsInLineup = collect($lineupArray)->pluck('player_id')->filter()->unique()->toArray();
+        $playersList = []; // Initialize as an empty array
+
+        if (!empty($playerIdsInLineup)) {
+            $playersList = Player::whereIn('id', $playerIdsInLineup)
+                ->select(['id', 'first_name', 'last_name', 'jersey_number'])
+                ->get() // Get a collection of Player models
+                ->map(function ($player) { // Map each player to the desired array structure
+                    return [
+                        'id'            => $player->id, // Keep as integer if player_id in lineup_assignments is int
+                        'full_name'     => $player->full_name, // Assumes full_name accessor exists
+                        'jersey_number' => $player->jersey_number,
+                    ];
+                })
+                ->values() // Convert the collection of mapped arrays into a simple indexed array
+                ->all();   // Convert to plain PHP array
+        }
+
+        $game->loadMissing('team:id,name');
+        $gameDetails = [
+            'id' => $game->id,
+            'team_name' => $game->team?->name ?? 'N/A',
+            'opponent_name' => $game->opponent_name ?? 'N/A',
+            'game_date' => $game->game_date?->toISOString(),
+            'innings_count' => $game->innings,
+            'location_type' => $game->location_type
+        ];
+
+        $responseData = [
+            'game_details'       => $gameDetails,
+            'players_info'       => $playersList, // <-- CHANGED: Now an array of player objects
+            'lineup_assignments' => $lineupArray
+        ];
+        return $this->successResponse($responseData, 'PDF data retrieved successfully.');
+    }
+    public function getLineupPdfData_olddd(Request $request, Game $game)
     {
         try {
             // Policy check: GamePolicy@viewPdfData

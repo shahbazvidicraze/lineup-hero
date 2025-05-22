@@ -12,6 +12,7 @@ class Settings extends Model
 
     protected $fillable = [
         'optimizer_service_url',
+        'optimizer_timeout',
         'unlock_price_amount',
         'unlock_currency',
         'unlock_currency_symbol',
@@ -33,10 +34,6 @@ class Settings extends Model
     public static function instance(bool $forceRefresh = false): self
     {
         return self::first();
-//        if ($forceRefresh) Cache::forget(self::CACHE_KEY);
-//        return Cache::remember(self::CACHE_KEY, now()->addHour(), function () {
-//            return self::first();
-//        });
     }
 
     /**

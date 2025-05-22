@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Purchase Your Team</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://js.stripe.com/v3/"></script>
     <style>
         body {
@@ -61,8 +62,12 @@
         .text-maroon{
             color: #7e1a1a !important;
         }
-        .pay-btn {
+        .btn-maroon, .btn-maroon:disabled {
             background-color: #7e1a1a;
+            color: #fff;
+        }
+        .btn-blue {
+            background-color: #054b8e;
             color: #fff;
         }
         @media (max-width: 768px) {
@@ -137,20 +142,22 @@
     <!-- Right Panel -->
     <div class="right-panel w-100" style="max-width: 500px;">
         <form id="payment-form">
-{{--            <h5 class="text-danger fw-bold mb-3">CONTACT INFORMATION</h5>--}}
-{{--            <div class="mb-3">--}}
-{{--                <input type="email" class="form-control" placeholder="Email" required />--}}
-{{--            </div>--}}
+
+
+
+
 
             <h5 class="text-maroon fw-bold mt-4 mb-3">PAYMENT METHOD</h5>
             <div class="mb-3">
                 <!-- Stripe Payment Element mounts here -->
-                <div id="payment-element" class="form-control p-3"></div>
+                <div id="payment-element" class="form-control d-flex justify-content-center align-items-center bg-secondary bg-opacity-10" style="height: 400px;">
+                    <h5>Stripe Form</h5>
+                </div>
             </div>
 
             <div id="error-message" class="text-danger mb-3"></div>
 
-            <button id="submit" class="btn pay-btn w-100" type="submit">
+            <button id="submit" class="btn btn-maroon w-100" type="submit">
                 <span id="button-text">Pay Now</span>
                 <span id="spinner" style="display: none;">Processing...</span>
             </button>
@@ -158,6 +165,23 @@
     </div>
 </div>
 
+<!-- Success Modal -->
+<div class="modal fade" id="paymentSuccessModal" tabindex="-1" aria-labelledby="paymentSuccessModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-center">
+            <div class="modal-header border-0">
+                <h5 class="modal-title w-100 text-maroon" id="paymentSuccessModalLabel">Already Activated</h5>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">{{ $message ?? 'Your team has already active access.' }}</p>
+                <div class="d-flex gap-2 justify-content-center">
+                    <a href="{{url('/web')}}" class="btn btn-blue">Go to Team</a>
+                    {{--                    <button type="button" disabled class="btn disabled btn-maroon" data-bs-dismiss="modal">Close</button>--}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <script>
     const stripeKey = "{{ $stripeKey ?? '' }}";         // Replace with test/public key directly for testing if needed
     const clientSecret = "{{ $clientSecret ?? '' }}";   // Inject this from your server
@@ -170,7 +194,6 @@
     const spinner = document.getElementById('spinner');
 
     if (!stripeKey || !clientSecret || !returnUrl) {
-        errorMessage.textContent = 'Payment configuration missing. Cannot proceed.';
         if (submitButton) submitButton.disabled = true;
     } else {
         try {
@@ -213,6 +236,13 @@
         buttonText.style.display = isLoading ? 'none' : 'inline';
     }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+            const successModal = new bootstrap.Modal(document.getElementById('paymentSuccessModal'));
+            successModal.show();
+    });
+</script>
 </body>
 </html>

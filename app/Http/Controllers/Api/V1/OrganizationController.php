@@ -25,7 +25,7 @@ class OrganizationController extends Controller
             $organizations = Organization::orderBy('name')->paginate($request->input('per_page', 25));
             return $this->successResponse($organizations, 'Organizations retrieved successfully (Admin View).');
         } else {
-            $organizations = Organization::select('id', 'name')->orderBy('name')->get();
+            $organizations = Organization::select('id', 'name', 'email')->orderBy('name')->get();
             return $this->successResponse($organizations, 'Organizations retrieved successfully.');
         }
     }
@@ -56,6 +56,25 @@ class OrganizationController extends Controller
         // Auth via 'auth:api_admin' middleware
         $organization->load('teams:id,name,organization_id');
         return $this->successResponse($organization);
+    }
+
+    /**
+     * Display the specified organization for a regular User.
+     * Route: GET /organizations/{organization} (User authenticated)
+     */
+    public function showForUser(Organization $organization) // Route model binding
+    {
+        $orgData = $organization->only(['id', 'name', 'email']); // Or select specific fields
+
+        // Example: If you want to show teams of THIS organization that the CURRENT USER owns
+         $user = auth()->user();
+         $teamsInThisOrgOwnedByUser = $user->teams()
+                                           ->where('organization_id', $organization->id)
+                                           ->get();
+         $orgData['teams'] = $teamsInThisOrgOwnedByUser;
+
+
+        return $this->successResponse($orgData, 'Organization details retrieved successfully.');
     }
 
     /**

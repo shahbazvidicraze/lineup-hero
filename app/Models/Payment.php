@@ -21,7 +21,7 @@ class Payment extends Model
     ];
 
     protected $casts = [
-        'amount' => 'integer', // Keep as integer (cents)
+        'amount' => 'decimal:2', // Keep as integer (cents)
         'paid_at' => 'datetime',
     ];
 
@@ -37,7 +37,15 @@ class Payment extends Model
     public function team() { return $this->belongsTo(Team::class); }
 
 
-    // --- Accessor for Formatted Amount ---
+    protected function amount(): Attribute
+    {
+        return Attribute::make(
+            get: function (int $valueFromDatabase) {
+                // Ensure the result is a float with two decimal places
+                return (float) number_format($valueFromDatabase / 100, 2, '.', '');
+            }
+        );
+    }
 
     /**
      * Get the payment amount formatted as a decimal string (e.g., "5.00").

@@ -197,6 +197,44 @@ class StripeController extends Controller
         // --- End Send Admin Notification Email ---
     }
 
+    /**
+     * Display the authenticated user's payment history.
+     * Route: GET /payments/history
+     */
+    public function userPaymentHistory(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = $request->user(); // Get the currently authenticated user
+
+        if (!$user) {
+            // Should be caught by auth:api_user middleware, but good failsafe
+            return $this->unauthorizedResponse('User not authenticated.');
+        }
+
+
+        $payments = Payment::where('user_id', $user->id)
+            ->with('team:id,name') // Eager load basic team info
+            ->orderBy('paid_at', 'desc') // Show most recent first
+            ->select([ // Select specific columns for the response
+                'id', 'team_id', 'stripe_payment_intent_id',
+                'amount', // Accessor in Payment model will convert to dollars
+                'currency', 'status', 'paid_at', 'created_at'
+            ])
+            ->paginate($request->input('per_page', 15)); // Paginate results
+
+        // The Payment model's 'amount' accessor should handle conversion to dollars.
+        // If you added 'display_amount_dollars' to the Payment model using $appends,
+        // it would also be included automatically.
+        // For consistency, let's ensure a display amount if not relying on the accessor alone for this specific output.
+        // However, if the 'amount()' accessor in Payment.php is working correctly, this transform is redundant.
+        // $payments->getCollection()->transform(function ($payment) {
+        //     $payment->display_amount_dollars = round($payment->getRawOriginal('amount') / 100, 2);
+        //     return $payment;
+        // });
+
+        return $this->successResponse($payments, 'Payment history retrieved successfully.');
+    }
+
     protected function handlePaymentIntentFailed(PaymentIntent $paymentIntent): void
     {
         Log::warning("Handling payment_intent.payment_failed: {$paymentIntent->id}", ['metadata' => $paymentIntent->metadata]);

@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\TeamController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\Admin\AdminUtilityController;
+use App\Http\Controllers\Api\V1\Auth\UniversalLoginController;
 
 
 
@@ -27,6 +28,9 @@ use App\Http\Controllers\Api\V1\Admin\AdminUtilityController;
 */
 
 Route::prefix('v1')->group(function () {
+
+    // Universal Login
+    Route::post('auth/login', [UniversalLoginController::class, 'login']);
 
     // --- Public Authentication ---
     Route::prefix('user/auth')->controller(UserAuthController::class)->group(function () {
@@ -66,6 +70,8 @@ Route::prefix('v1')->group(function () {
         // Player Preferences
         Route::post('players/{player}/preferences', [PlayerPreferenceController::class, 'store']);
         Route::get('players/{player}/preferences', [PlayerPreferenceController::class, 'show']);
+        Route::put('teams/{team}/bulk-player-preferences', [PlayerPreferenceController::class, 'bulkUpdateByTeam']);
+        Route::get('teams/{team}/bulk-player-preferences', [PlayerPreferenceController::class, 'bulkShowByTeam']);
 
         // Game Management
         Route::get('teams/{team}/games', [GameController::class, 'index']);
@@ -82,10 +88,14 @@ Route::prefix('v1')->group(function () {
 
         // Supporting Lists
         Route::get('organizations', [OrganizationController::class, 'index']); // User list view
+        Route::get('organizations/{organization}', [OrganizationController::class, 'showForUser']); // User list view
         Route::get('positions', [PositionController::class, 'index']);         // User list view
 
         // --- Stripe Payment Initiation ---
         Route::post('teams/{team}/create-payment-intent', [StripeController::class, 'createTeamPaymentIntent']); // Added
+        Route::get('payment-details', [StripeController::class, 'showUnlockDetails']); // Added
+        // --- User Payment History ---
+        Route::get('payments/history', [StripeController::class, 'userPaymentHistory']);
 
         Route::post('promo-codes/redeem', [UserPromoCodeController::class, 'redeem']); // Added
 
