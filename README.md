@@ -1,66 +1,232 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Lineup Hero API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Lineup Hero API is the backend service powering the Lineup Hero application, a tool for creating and managing baseball and softball team lineups, optimizing player positions, and generating PDF lineup cards. This API is built with Laravel 11 and uses JWT for multi-auth (User and Admin).
 
-## About Laravel
+## Table of Contents
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+    - [1. Clone Repository](#1-clone-repository)
+    - [2. Install Dependencies](#2-install-dependencies)
+    - [3. Environment Setup](#3-environment-setup)
+    - [4. Generate Application Key](#4-generate-application-key)
+    - [5. Database Migration & Seeding](#5-database-migration--seeding)
+    - [6. Configure JWT](#6-configure-jwt)
+    - [7. Configure Stripe](#7-configure-stripe)
+    - [8. Configure Python Optimizer Service (If Used)](#8-configure-python-optimizer-service-if-used)
+    - [9. Configure Mail](#9-configure-mail)
+    - [10. Set Up Queue Worker (Recommended)](#10-set-up-queue-worker-recommended)
+    - [11. Configure Web Server](#11-configure-web-server)
+- [API Endpoints](#api-endpoints)
+    - [Authentication (User & Admin)](#authentication-user--admin)
+    - [User Routes](#user-routes)
+    - [Admin Routes](#admin-routes)
+    - [Stripe Webhook](#stripe-webhook)
+- [Python Lineup Optimizer Service](#python-lineup-optimizer-service)
+- [Testing](#testing)
+- [Deployment Notes](#deployment-notes)
+- [Contributing](#contributing)
+- [License](#license)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Features
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+*   **Multi-Authentication:** Separate login and functionalities for Users (Coaches/Managers) and Admins using JWT.
+*   **Team Management:** Create, update, list, and delete teams with details like sport type, age group, season, etc.
+*   **Player Management:** Add, update, list, and delete players within teams.
+*   **Player Preferences:** Set preferred and restricted positions for players.
+*   **Game Management:** Create, update, list, and delete games.
+*   **Lineup Builder:**
+    *   Save and retrieve lineup assignments (player, position, inning).
+    *   **Automated Lineup Completion:** Endpoint to call an external Python optimization service for optimal player placement.
+*   **Player Statistics:** Calculation of historical player stats (`% innings played`, `top_position`, `avg_batting_loc`, etc.).
+*   **PDF Data Generation:** API endpoint to provide structured JSON data for client-side (Flutter) PDF lineup card generation.
+*   **Access Control for PDF Data:**
+    *   Teams require active access (via payment or promo code) to enable PDF data retrieval.
+    *   Access is granted for a configurable annual duration.
+*   **Stripe Payment Integration:**
+    *   Create Payment Intents for users to pay for team access.
+    *   Webhook handler to process successful payments and update team access status.
+*   **Promo Code System:**
+    *   Admin management of promo codes (create, list, update, delete).
+    *   User redemption of promo codes to activate team access.
+*   **Application Settings:** Admin-configurable global settings (e.g., optimizer URL, prices, notification preferences).
+*   **Email Notifications:**
+    *   User welcome email.
+    *   Password reset OTP email.
+    *   Password changed notification email (for User & Admin).
+    *   Payment success/failure notifications (for User).
+    *   Admin notification for new payments (configurable).
+*   **Admin Utilities:** API endpoints for admins to run migrations and seeders in controlled environments.
 
-## Learning Laravel
+## Tech Stack
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+*   **Backend Framework:** Laravel 11 (PHP 8.2+)
+*   **Database:** MySQL (Recommended) / PostgreSQL / SQLite (for local dev)
+*   **Authentication:** `tymon/jwt-auth` for JWT
+*   **Payments:** Stripe PHP SDK
+*   **Lineup Optimization:** External Python (Flask + PuLP) service (optional, can be replaced by heuristics)
+*   **Mail:** Laravel Mail (configurable drivers like SMTP, Mailgun, Log, Mailtrap)
+*   **Queues:** Laravel Queues (Recommended for mailing, potentially other background tasks)
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## Prerequisites
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+*   PHP >= 8.2
+*   Composer
+*   Database Server (MySQL >= 5.7 or MariaDB >= 10.3, or PostgreSQL >= 10)
+*   Web Server (Nginx or Apache)
+*   Node.js & NPM/Yarn (if you plan to modify frontend assets, less critical for pure API)
+*   (If using Python Optimizer) Python >= 3.9, Pip, and a PuLP solver like CBC.
+*   Stripe Account (for payment integration)
 
-## Laravel Sponsors
+## Installation
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+### 1. Clone Repository
 
-### Premium Partners
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+git clone https://github.com/shahbazvidicraze/lineup-hero.git lineup-hero-api
+cd lineup-hero-api
+Use code with caution.
+Markdown
+2. Install Dependencies
+composer install --optimize-autoloader --no-dev # For production
+# OR
+composer install # For development
+Use code with caution.
+Bash
+3. Environment Setup
+Copy the example environment file:
+cp .env.example .env
+Use code with caution.
+Bash
+Edit .env and configure the following:
+APP_NAME, APP_ENV, APP_DEBUG, APP_URL
+DB_CONNECTION, DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD
+MAIL_... variables for email sending.
+STRIPE_KEY, STRIPE_SECRET, STRIPE_WEBHOOK_SECRET (use test keys for development).
+OPTIMIZER_SERVICE_URL (URL of your Python lineup optimizer service if used).
+Queue driver (QUEUE_CONNECTION), e.g., database or redis.
+4. Generate Application Key
+php artisan key:generate
+Use code with caution.
+Bash
+5. Database Migration & Seeding
+Run Migrations: Create the database schema.
+php artisan migrate
+Use code with caution.
+Bash
+Run Seeders: Populate the database with initial data (positions, settings, optional sample users/teams).
+php artisan db:seed
+Use code with caution.
+Bash
+This will run DatabaseSeeder.php, which should call PositionSeeder, SettingsSeeder, and OrganizationTeamPlayerSeeder.
+The OrganizationTeamPlayerSeeder is designed to use existing users (e.g., created by User::factory() in DatabaseSeeder or your initial user setup) and build data for them.
+6. Configure JWT
+Publish the JWT configuration (if not already done when installing tymon/jwt-auth):
+php artisan vendor:publish --provider="Tymon\JWTAuth\Providers\LaravelServiceProvider"
+Use code with caution.
+Bash
+Generate JWT Secret Key:
+php artisan jwt:secret
+Use code with caution.
+Bash
+Ensure your config/auth.php has the api_user and api_admin guards and providers correctly configured for JWT and your User and Admin models.
+7. Configure Stripe
+Add your Stripe Publishable Key (pk_...) and Secret Key (sk_...) to .env.
+For local development, set up stripe listen to forward webhooks and get a local webhook signing secret for STRIPE_WEBHOOK_SECRET.
+For production, create a webhook endpoint in your Stripe dashboard and use the live webhook signing secret.
+Ensure the webhook route (/stripe/webhook or /api/v1/stripe/webhook) is excluded from CSRF protection in app/Http/Middleware/VerifyCsrfToken.php (Laravel <11) or bootstrap/app.php (Laravel 11+).
+8. Configure Python Optimizer Service (If Used)
+Set up and run your Python Flask/PuLP service (see separate deployment guide for the Python service).
+Ensure the OPTIMIZER_SERVICE_URL in your Laravel .env file points to the correct URL of this running Python service.
+9. Configure Mail
+Set up your mail driver and credentials in .env (e.g., SMTP, Mailgun, SES, Mailtrap for testing, or log driver).
+10. Set Up Queue Worker (Recommended)
+For sending emails and other background tasks, set up a queue worker:
+php artisan queue:work
+Use code with caution.
+Bash
+For production, use a process manager like Supervisor to keep the queue worker running.
+11. Configure Web Server
+Document Root: Point your web server's document root to the /public directory of your Laravel project.
+Rewrite Rules: Ensure proper rewrite rules are in place for Laravel (e.g., for Nginx or Apache .htaccess).
+Nginx Example Snippet:
+server {
+    # ... other server config ...
+    root /path/to/your/lineup-hero-api/public;
+    index index.php;
 
-## Contributing
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+    location ~ \.php$ {
+        # ... fastcgi_pass to your PHP-FPM socket/port ...
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+}
+Use code with caution.
+Nginx
+API Endpoints
+All User and Admin routes (except public auth routes) require a JWT Bearer token in the Authorization header.
+Refer to the separate "Lineup Hero API Documentation for Flutter Client" PDF/Markdown for detailed request/response examples for each endpoint.
+Authentication (User & Admin)
+User Register: POST /user/auth/register
+User Login: POST /user/auth/login
+Admin Login: POST /admin/auth/login
+(Universal Login if implemented): POST /auth/login
+User/Admin Logout: POST /user/auth/logout, POST /admin/auth/logout
+User/Admin Refresh Token: POST /user/auth/refresh, POST /admin/auth/refresh
+User/Admin Get Profile: GET /user/auth/profile, GET /admin/auth/profile
+User/Admin Update Profile: PUT /user/auth/profile, PUT /admin/auth/profile
+User/Admin Change Password: POST /user/auth/change-password, POST /admin/auth/change-password
+User Forgot Password: POST /user/auth/forgot-password
+User Reset Password: POST /user/auth/reset-password
+User Routes
+Teams: GET, POST /teams; GET, PUT, DELETE /teams/{teamId}
+Players (Team context): POST /teams/{teamId}/players; GET /teams/{teamId}/players
+Players (Direct): GET, PUT, DELETE /players/{playerId}
+Player Preferences: POST, GET /players/{playerId}/preferences; GET, PUT /teams/{teamId}/bulk-player-preferences
+Games (Team context): GET, POST /teams/{teamId}/games
+Games (Direct): GET, PUT, DELETE /games/{gameId}
+Lineups: GET, PUT /games/{gameId}/lineup; POST /games/{gameId}/autocomplete-lineup
+PDF Data: GET /games/{gameId}/pdf-data (Requires active team access)
+Payment/Promo: POST /teams/{teamId}/create-payment-intent; POST /promo-codes/redeem
+Payment History: GET /payments/history
+Supporting Lists: GET /organizations; GET /positions
+Payment Details: GET /payment-details
+Admin Routes
+(All prefixed with /admin)
+Organizations: GET, POST /organizations; GET, PUT, DELETE /organizations/{orgId}
+Positions: GET, POST /positions; GET, PUT, DELETE /positions/{posId}
+Users (Manage Coaches): GET, POST /users; GET, PUT, DELETE /users/{userId}
+Promo Codes: GET, POST /promo-codes; GET, PUT, DELETE /promo-codes/{promoId}
+Payments: GET /payments; GET /payments/{paymentId} (with filters)
+Settings: GET, PUT /settings
+Utilities: POST /utils/migrate-and-seed; POST /utils/migrate-fresh-and-seed
+Stripe Webhook
+POST /stripe/webhook (Path depends on your VerifyCsrfToken exclusion and Stripe Dashboard config)
+Python Lineup Optimizer Service
+This API relies on an external Python (Flask + PuLP) service for the "Autocomplete Lineup" feature.
+This service needs to be deployed and running independently.
+The URL for this service is configured via the OPTIMIZER_SERVICE_URL in the Laravel .env file (managed via the Admin Settings API).
+Refer to the Python service's own documentation/README for its deployment.
+Testing
+PHPUnit: Run unit and feature tests:
+php artisan test
+Use code with caution.
+Bash
+Postman: A Postman collection can be used to test API endpoints. (Consider creating and sharing one).
+Stripe CLI: Use stripe listen --forward-to <your-local-webhook-url> for local webhook testing. Use stripe trigger <event> to simulate Stripe events.
+Deployment Notes
+Ensure APP_ENV=production and APP_DEBUG=false in your production .env.
+Use live Stripe keys and webhook secrets in production.
+Configure a robust queue worker (e.g., Supervisor + Redis/Database queue driver) for production.
+Set correct file permissions for storage and bootstrap/cache.
+Set up HTTPS (SSL certificate) for your domain.
+Deploy the Python optimizer service separately and ensure its URL is correctly configured in Laravel.
+Contributing
+[Outline contribution guidelines if this is an open project or for team collaboration - e.g., coding standards, pull request process.]
+License
