@@ -89,6 +89,8 @@ Route::prefix('v1')->group(function () {
         // Supporting Lists
         Route::get('organizations', [OrganizationController::class, 'index']); // User list view
         Route::get('organizations/{organization}', [OrganizationController::class, 'showForUser']); // User list view
+        // --- NEW ROUTE: Get/Check Organization by Code ---
+        Route::get('organizations/by-code/{organization_code}', [OrganizationController::class, 'showByCode']);
         Route::get('positions', [PositionController::class, 'index']);         // User list view
 
         // --- Stripe Payment Initiation ---
@@ -116,6 +118,8 @@ Route::prefix('v1')->group(function () {
         // Organization Management (Full CRUD except index handled separately)
         Route::apiResource('organizations', OrganizationController::class)->except(['index']);
         Route::get('organizations', [OrganizationController::class, 'index']); // Admin list view (might differ from user view)
+        // --- NEW ROUTE: Get/Check Organization by Code ---
+        Route::get('organizations/by-code/{organization_code}', [OrganizationController::class, 'showByCode']);
 
         Route::get('settings', [AdminSettingsController::class, 'show']);
         Route::put('settings', [AdminSettingsController::class, 'update']);

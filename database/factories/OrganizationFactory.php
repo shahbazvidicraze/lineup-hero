@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Organization;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 class OrganizationFactory extends Factory
 {
@@ -21,11 +22,17 @@ class OrganizationFactory extends Factory
      */
     public function definition(): array
     {
+        // Generate a unique organization code
+        $organizationCode = null;
+        do {
+            // Example: 6-character uppercase alphanumeric code
+            $organizationCode = strtoupper(Str::random(6));
+        } while (Organization::where('organization_code', $organizationCode)->exists());
+
         return [
             'name' => fake()->company() . ' ' . fake()->randomElement(['League', 'Association', 'Club']),
             'email' => fake()->unique()->safeEmail(),
-            // Orgs created by admin, no password needed initially by default
-            // 'password' => null,
+            'organization_code' => $organizationCode, // Add the generated code
         ];
     }
 }

@@ -22,6 +22,7 @@ class Team extends Model
         'age_group',
         'city',
         'state',
+        'country',
         'access_status',      // Added
         'access_expires_at',  // Added
     ];

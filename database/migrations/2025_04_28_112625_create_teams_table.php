@@ -23,6 +23,7 @@ return new class extends Migration
             $table->string('age_group'); // e.g., "11u", "Varsity"
             $table->string('city')->nullable();
             $table->string('state')->nullable();
+            $table->string('country')->nullable();
             $table->timestamps();
         });
     }

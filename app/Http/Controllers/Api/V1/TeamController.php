@@ -44,6 +44,7 @@ class TeamController extends Controller
             'year' => 'nullable|integer|digits:4',
             'city' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:100',
+            'country' => 'nullable|string|max:100',
             'organization_id' => 'nullable|exists:organizations,id',
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
@@ -75,7 +76,7 @@ class TeamController extends Controller
             'age_group' => 'sometimes|required|string|max:50',
             'season' => 'nullable|string|max:50', 'year' => 'nullable|integer|digits:4',
             'city' => 'nullable|string|max:100', 'state' => 'nullable|string|max:100',
-            'organization_id' => 'nullable|exists:organizations,id',
+            'country' => 'nullable|string|max:100', 'organization_id' => 'nullable|exists:organizations,id',
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
 

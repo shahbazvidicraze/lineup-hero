@@ -12,7 +12,7 @@ class Organization extends Authenticatable implements JWTSubject
 {
     use HasFactory, Notifiable;
 
-    protected $fillable = ['name', 'email', 'password']; // Add fillable fields
+    protected $fillable = ['name', 'organization_code', 'email', 'password']; // Add fillable fields
     protected $hidden = ['password', 'remember_token']; // Hide if login needed
 
     protected function casts(): array {

@@ -25,7 +25,7 @@ class OrganizationController extends Controller
             $organizations = Organization::orderBy('name')->paginate($request->input('per_page', 25));
             return $this->successResponse($organizations, 'Organizations retrieved successfully (Admin View).');
         } else {
-            $organizations = Organization::select('id', 'name', 'email')->orderBy('name')->get();
+            $organizations = Organization::select('id', 'name', 'organization_code', 'email')->orderBy('name')->get();
             return $this->successResponse($organizations, 'Organizations retrieved successfully.');
         }
     }
@@ -39,6 +39,7 @@ class OrganizationController extends Controller
         // Auth via 'auth:api_admin' middleware
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255|unique:organizations,name',
+            "organization_code" => 'required|string|max:50|unique:organizations,organization_code',
             'email' => 'nullable|email|max:255|unique:organizations,email',
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);
@@ -64,7 +65,7 @@ class OrganizationController extends Controller
      */
     public function showForUser(Organization $organization) // Route model binding
     {
-        $orgData = $organization->only(['id', 'name', 'email']); // Or select specific fields
+        $orgData = $organization->only(['id', 'name', 'organization_code', 'email']); // Or select specific fields
 
         // Example: If you want to show teams of THIS organization that the CURRENT USER owns
          $user = auth()->user();
@@ -78,6 +79,41 @@ class OrganizationController extends Controller
     }
 
     /**
+     * Display the specified organization by its unique code.
+     * Accessible by authenticated users.
+     * Route: GET /organizations/by-code/{organization_code}
+     */
+    public function showByCode(Request $request, string $organization_code)
+    {
+        // No specific user ownership check needed here, as the purpose is often
+        // for a user to find/verify an organization by a code they might have received.
+        // The 'auth:api_user' middleware ensures a user is logged in.
+
+        if (empty(trim($organization_code))) {
+            return $this->errorResponse('Organization code cannot be empty.', Response::HTTP_BAD_REQUEST);
+        }
+
+        // Find the organization by its code. Codes should ideally be case-insensitive during lookup.
+        // Store codes in uppercase in DB and search for uppercase version.
+        $organization = Organization::where('organization_code', strtoupper(trim($organization_code)))->first();
+
+        if (!$organization) {
+            return $this->notFoundResponse('Organization with this code not found.');
+        }
+
+        // Return basic, publicly relevant organization data
+        // Avoid returning sensitive details if any exist on the model for admins
+        $orgData = [
+            'id' => $organization->id,
+            'name' => $organization->name,
+            'organization_code' => $organization->organization_code, // Confirm the code
+            'email' => $organization->email, // If public contact email
+        ];
+
+        return $this->successResponse($orgData, 'Organization details retrieved successfully.');
+    }
+
+    /**
      * Update the specified organization (Admin only).
      * Route: PUT /admin/organizations/{organization}
      */
@@ -86,6 +122,7 @@ class OrganizationController extends Controller
         // Auth via 'auth:api_admin' middleware
         $validator = Validator::make($request->all(), [
             'name' => ['sometimes','required','string','max:255', Rule::unique('organizations', 'name')->ignore($organization->id)],
+            'organization_code' => ['sometimes','required','string','max:50', Rule::unique('organizations', 'organization_code')->ignore($organization->id)],
             'email' => ['nullable','email','max:255', Rule::unique('organizations', 'email')->ignore($organization->id)],
         ]);
         if ($validator->fails()) return $this->validationErrorResponse($validator);

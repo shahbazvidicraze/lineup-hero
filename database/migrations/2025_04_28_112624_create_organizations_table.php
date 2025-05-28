@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('organizations', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->string('organization_code')->unique()->nullable();
             $table->string('email')->unique()->nullable(); // Orgs might not need direct login initially
             $table->string('password')->nullable();      // Make nullable if no direct login
             $table->rememberToken(); // Keep for potential future login
